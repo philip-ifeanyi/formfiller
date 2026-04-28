@@ -216,6 +216,26 @@ export interface FieldCandidate {
 	isReadonly: boolean
 }
 
+export interface FormSectionSnapshot {
+	id: string
+	element: HTMLElement | HTMLFormElement
+	title?: string
+	domSignature: string
+	candidateIds: string[]
+}
+
+export interface FormSnapshot {
+	id: string
+	form: HTMLFormElement
+	name?: string
+	method: string
+	action?: string
+	domSignature: string
+	candidateIds: string[]
+	candidates: FieldCandidate[]
+	sections: FormSectionSnapshot[]
+}
+
 export interface FieldInferenceAlternative {
 	fieldKey: CanonicalFieldKey
 	confidence: number

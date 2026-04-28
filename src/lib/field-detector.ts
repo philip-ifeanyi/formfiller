@@ -1,4 +1,17 @@
-import { FieldInfo, FieldPattern } from '@/types'
+import {
+	type FieldCandidate,
+	type FieldControlKind,
+	FieldInfo,
+	FieldPattern,
+	type FormControlElement,
+	type FormSectionSnapshot,
+	type FormSnapshot
+} from '@/types'
+
+const CONTROL_SELECTOR = 'input, select, textarea'
+const SECTION_SELECTOR = 'fieldset, section, article, [role="group"], [data-form-section]'
+
+type SearchRoot = Document | ShadowRoot | HTMLElement
 
 export class FieldDetector {
 	private patterns: Record<string, Record<string, FieldPattern>> = {
@@ -165,7 +178,18 @@ export class FieldDetector {
 		}
 	}
 
-	detectField(element: HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement): FieldInfo | null {
+	collectFormSnapshots(root: SearchRoot = document): FormSnapshot[] {
+		const searchRoots = this.getSearchRoots(root)
+		const forms = this.collectForms(searchRoots)
+
+		return forms.map(form => this.createFormSnapshot(form, searchRoots))
+	}
+
+	collectFormSnapshot(form: HTMLFormElement, root: SearchRoot = document): FormSnapshot {
+		return this.createFormSnapshot(form, this.getSearchRoots(root))
+	}
+
+	detectField(element: FormControlElement): FieldInfo | null {
 		const fieldInfo: FieldInfo = {
 			element,
 			type: '',
@@ -191,23 +215,153 @@ export class FieldDetector {
 	}
 
 	detectFields(form: HTMLFormElement): Map<HTMLElement, FieldInfo> {
-		const fieldMap = new Map<HTMLElement, FieldInfo>()
-		const inputs = form.querySelectorAll('input, select, textarea') as NodeListOf<
-			HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement
-		>
+		return this.detectFieldsFromSnapshot(this.collectFormSnapshot(form))
+	}
 
-		inputs.forEach(input => {
-			const detectedField = this.detectField(input)
+	detectFieldsFromSnapshot(snapshot: FormSnapshot): Map<HTMLElement, FieldInfo> {
+		const fieldMap = new Map<HTMLElement, FieldInfo>()
+
+		snapshot.candidates.forEach(candidate => {
+			const detectedField = this.detectField(candidate.element)
 			if (detectedField) {
-				fieldMap.set(input, detectedField)
+				fieldMap.set(candidate.element, detectedField)
 			}
 		})
 
 		return fieldMap
 	}
 
+	private createFormSnapshot(form: HTMLFormElement, searchRoots: SearchRoot[]): FormSnapshot {
+		const formId = this.getFormIdentifier(form)
+		const controls = this.collectFormControls(form, searchRoots)
+		const sectionBuckets = new Map<string, {
+			element: HTMLElement | HTMLFormElement
+			title?: string
+			domSignature: string
+			candidateIds: string[]
+		}>()
+
+		const candidates = controls.map(control => {
+			const sectionElement = this.getSectionContainer(control, form)
+			const sectionId = this.getSectionIdentifier(sectionElement, formId)
+			const candidate = this.createFieldCandidate(control, formId, sectionId)
+			const existingSection = sectionBuckets.get(sectionId)
+
+			if (existingSection) {
+				existingSection.candidateIds.push(candidate.id)
+			} else {
+				sectionBuckets.set(sectionId, {
+					element: sectionElement,
+					title: this.getSectionTitle(sectionElement, form),
+					domSignature: this.buildDomSignature(sectionElement, form),
+					candidateIds: [candidate.id]
+				})
+			}
+
+			return candidate
+		})
+
+		this.assignPeerIds(candidates)
+
+		const sections: FormSectionSnapshot[] = Array.from(sectionBuckets.entries()).map(([id, bucket]) => ({
+			id,
+			element: bucket.element,
+			title: bucket.title,
+			domSignature: bucket.domSignature,
+			candidateIds: bucket.candidateIds
+		}))
+
+		return {
+			id: formId,
+			form,
+			name: form.getAttribute('name') || undefined,
+			method: (form.getAttribute('method') || 'get').toLowerCase(),
+			action: form.getAttribute('action') || undefined,
+			domSignature: this.buildDomSignature(form),
+			candidateIds: candidates.map(candidate => candidate.id),
+			candidates,
+			sections
+		}
+	}
+
+	private collectForms(searchRoots: SearchRoot[]): HTMLFormElement[] {
+		const forms = new Set<HTMLFormElement>()
+
+		searchRoots.forEach(root => {
+			if (root instanceof HTMLFormElement) {
+				forms.add(root)
+			}
+
+			root.querySelectorAll('form').forEach(form => {
+				forms.add(form)
+			})
+		})
+
+		return Array.from(forms)
+	}
+
+	private collectFormControls(form: HTMLFormElement, searchRoots: SearchRoot[]): FormControlElement[] {
+		const controls = new Set<FormControlElement>()
+
+		searchRoots.forEach(root => {
+			root.querySelectorAll(CONTROL_SELECTOR).forEach(controlNode => {
+				if (!(controlNode instanceof HTMLInputElement || controlNode instanceof HTMLTextAreaElement || controlNode instanceof HTMLSelectElement)) {
+					return
+				}
+
+				if (this.belongsToForm(controlNode, form)) {
+					controls.add(controlNode)
+				}
+			})
+		})
+
+		return Array.from(controls)
+	}
+
+	private createFieldCandidate(element: FormControlElement, formId: string, sectionId: string): FieldCandidate {
+		return {
+			id: `${formId}::${this.buildDomSignature(element)}`,
+			element,
+			formId,
+			sectionId,
+			controlKind: this.getControlKind(element),
+			htmlType: element instanceof HTMLInputElement ? element.type : undefined,
+			role: element.getAttribute('role') || undefined,
+			labelText: this.getAssociatedLabelText(element) || undefined,
+			placeholder: element.getAttribute('placeholder') || undefined,
+			autocomplete: element.getAttribute('autocomplete') || undefined,
+			attributes: this.collectAttributes(element),
+			optionText: this.getOptionText(element),
+			nearbyText: this.getNearbyText(element),
+			evidence: [],
+			peerIds: [],
+			domSignature: this.buildDomSignature(element),
+			visibility: this.getVisibilityState(element),
+			isDisabled: element.matches(':disabled'),
+			isReadonly: element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement
+				? element.readOnly
+				: element.hasAttribute('readonly')
+		}
+	}
+
+	private assignPeerIds(candidates: FieldCandidate[]): void {
+		const groupedCandidates = new Map<string, string[]>()
+
+		candidates.forEach(candidate => {
+			const key = candidate.sectionId || candidate.formId
+			const existing = groupedCandidates.get(key) || []
+			existing.push(candidate.id)
+			groupedCandidates.set(key, existing)
+		})
+
+		candidates.forEach(candidate => {
+			const key = candidate.sectionId || candidate.formId
+			candidate.peerIds = (groupedCandidates.get(key) || []).filter(id => id !== candidate.id)
+		})
+	}
+
 	private calculateConfidence(
-		element: HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement,
+		element: FormControlElement,
 		config: FieldPattern
 	): number {
 		let confidence = 0
@@ -253,23 +407,293 @@ export class FieldDetector {
 		return confidence
 	}
 
+	private getSearchRoots(root: SearchRoot): SearchRoot[] {
+		const roots: SearchRoot[] = []
+		const queue: SearchRoot[] = [root]
+		const seen = new Set<Node>()
+
+		while (queue.length > 0) {
+			const currentRoot = queue.shift()
+			if (!currentRoot || seen.has(currentRoot)) continue
+
+			seen.add(currentRoot)
+			roots.push(currentRoot)
+
+			const elements = currentRoot.querySelectorAll('*')
+			elements.forEach(element => {
+				if (element instanceof HTMLElement && element.shadowRoot && !seen.has(element.shadowRoot)) {
+					queue.push(element.shadowRoot)
+				}
+			})
+		}
+
+		return roots
+	}
+
+	private getFormIdentifier(form: HTMLFormElement): string {
+		if (form.id) {
+			return `form:${form.id}`
+		}
+
+		return `form:${this.buildDomSignature(form)}`
+	}
+
+	private belongsToForm(control: FormControlElement, form: HTMLFormElement): boolean {
+		if (control.form === form) return true
+		if (form.id && control.getAttribute('form') === form.id) return true
+
+		return this.isNodeWithinFormTree(control, form)
+	}
+
+	private isNodeWithinFormTree(node: Node, form: HTMLFormElement): boolean {
+		let current: Node | null = node
+
+		while (current) {
+			if (current === form) {
+				return true
+			}
+
+			current = this.getComposedParent(current)
+		}
+
+		return false
+	}
+
+	private getComposedParent(node: Node): Node | null {
+		if (node.parentNode) {
+			return node.parentNode
+		}
+
+		const root = node.getRootNode()
+		if (root instanceof ShadowRoot) {
+			return root.host
+		}
+
+		return null
+	}
+
+	private getSectionContainer(element: FormControlElement, form: HTMLFormElement): HTMLElement | HTMLFormElement {
+		let current: Node | null = element
+
+		while (current) {
+			if (current instanceof HTMLElement && current !== form && current.matches(SECTION_SELECTOR)) {
+				return current
+			}
+
+			if (current === form) {
+				return form
+			}
+
+			current = this.getComposedParent(current)
+		}
+
+		return form
+	}
+
+	private getSectionIdentifier(section: HTMLElement | HTMLFormElement, formId: string): string {
+		if (section instanceof HTMLFormElement) {
+			return `${formId}::section:root`
+		}
+
+		return `${formId}::section:${this.buildDomSignature(section)}`
+	}
+
+	private getSectionTitle(section: HTMLElement | HTMLFormElement, form: HTMLFormElement): string | undefined {
+		if (section === form) {
+			return form.getAttribute('aria-label') || form.getAttribute('name') || undefined
+		}
+
+		if (section instanceof HTMLFieldSetElement) {
+			const legend = section.querySelector('legend')
+			if (legend?.textContent?.trim()) return legend.textContent.trim()
+		}
+
+		const heading = section.querySelector('h1, h2, h3, h4, h5, h6')
+		if (heading?.textContent?.trim()) return heading.textContent.trim()
+
+		return section.getAttribute('aria-label') || undefined
+	}
+
+	private getControlKind(element: FormControlElement): FieldControlKind {
+		if (element instanceof HTMLTextAreaElement) return 'textarea'
+		if (element instanceof HTMLSelectElement) return 'select'
+		if (!(element instanceof HTMLInputElement)) return 'unknown'
+
+		switch (element.type) {
+			case 'checkbox':
+				return 'checkbox'
+			case 'radio':
+				return 'radio'
+			case 'date':
+				return 'date'
+			case 'datetime-local':
+				return 'datetime'
+			case 'number':
+				return 'number'
+			case 'email':
+				return 'email'
+			case 'tel':
+				return 'tel'
+			case 'password':
+				return 'password'
+			case 'hidden':
+				return 'hidden'
+			case 'text':
+				return 'text'
+			default:
+				return element.getAttribute('role') ? 'custom' : 'text'
+		}
+	}
+
+	private collectAttributes(element: FormControlElement): Record<string, string> {
+		return Array.from(element.attributes).reduce<Record<string, string>>((attributes, attribute) => {
+			attributes[attribute.name] = attribute.value
+			return attributes
+		}, {})
+	}
+
+	private getOptionText(element: FormControlElement): string[] {
+		if (!(element instanceof HTMLSelectElement)) {
+			return []
+		}
+
+		return Array.from(element.options)
+			.map(option => option.textContent?.trim() || '')
+			.filter(Boolean)
+	}
+
+	private getNearbyText(element: FormControlElement): string[] {
+		const nearby = new Set<string>()
+		const labelText = this.getAssociatedLabelText(element)
+		const describedBy = this.getReferencedText(element, 'aria-describedby')
+		const section = this.getSectionContainer(element, element.form || element.closest('form') || document.createElement('form'))
+
+		if (labelText) nearby.add(labelText)
+		if (element.getAttribute('placeholder')) nearby.add(element.getAttribute('placeholder') || '')
+		describedBy.forEach(text => nearby.add(text))
+
+		if (section instanceof HTMLElement) {
+			const sectionTitle = this.getSectionTitle(section, element.form || document.createElement('form'))
+			if (sectionTitle) nearby.add(sectionTitle)
+
+			const sectionText = section.textContent?.replace(/\s+/g, ' ').trim()
+			if (sectionText) {
+				nearby.add(sectionText.slice(0, 120))
+			}
+		}
+
+		return Array.from(nearby).filter(Boolean)
+	}
+
 	private getAssociatedLabelText(element: HTMLElement): string {
-		// Check for label element
-		const label = element.id ? document.querySelector(`label[for="${element.id}"]`) : null
-		if (label) return label.textContent || ''
+		const associatedTexts = new Set<string>()
+
+		if (element.id) {
+			element.ownerDocument.querySelectorAll(`label[for="${element.id}"]`).forEach(label => {
+				if (label.textContent?.trim()) {
+					associatedTexts.add(label.textContent.trim())
+				}
+			})
+		}
 
 		// Check for closest label parent
 		const parentLabel = element.closest('label')
-		if (parentLabel) return parentLabel.textContent || ''
+		if (parentLabel?.textContent?.trim()) {
+			associatedTexts.add(parentLabel.textContent.trim())
+		}
+
+		this.getReferencedText(element, 'aria-labelledby').forEach(text => associatedTexts.add(text))
+
+		if (associatedTexts.size > 0) {
+			return Array.from(associatedTexts).join(' ')
+		}
 
 		// Check for surrounding text content
-		const parent = element.closest('div, td, li, fieldset')
+		const parent = element.closest('div, td, li, fieldset, section, article')
 		if (parent) {
 			const textContent = parent.textContent || ''
 			return textContent.slice(0, 100) // Limit to prevent excessive text
 		}
 
 		return ''
+	}
+
+	private getReferencedText(element: HTMLElement, attributeName: 'aria-labelledby' | 'aria-describedby'): string[] {
+		const attributeValue = element.getAttribute(attributeName)
+		if (!attributeValue) return []
+
+		return attributeValue
+			.split(/\s+/)
+			.map(referenceId => element.ownerDocument.getElementById(referenceId)?.textContent?.trim() || '')
+			.filter(Boolean)
+	}
+
+	private getVisibilityState(element: FormControlElement): 'visible' | 'hidden' | 'offscreen' {
+		if (element instanceof HTMLInputElement && element.type === 'hidden') {
+			return 'hidden'
+		}
+
+		const computedStyle = window.getComputedStyle(element)
+		if (
+			computedStyle.display === 'none' ||
+			computedStyle.visibility === 'hidden' ||
+			computedStyle.opacity === '0' ||
+			element.getAttribute('aria-hidden') === 'true'
+		) {
+			return 'hidden'
+		}
+
+		const rect = element.getBoundingClientRect()
+		if (rect.width === 0 || rect.height === 0) {
+			return 'hidden'
+		}
+
+		if (
+			rect.bottom < 0 ||
+			rect.right < 0 ||
+			rect.top > window.innerHeight ||
+			rect.left > window.innerWidth
+		) {
+			return 'offscreen'
+		}
+
+		return 'visible'
+	}
+
+	private buildDomSignature(element: Element, stopAt?: Element): string {
+		const segments: string[] = []
+		let current: Node | null = element
+
+		while (current) {
+			if (current instanceof Element) {
+				segments.unshift(this.getSignatureSegment(current))
+				if (stopAt && current === stopAt) {
+					break
+				}
+			}
+
+			current = this.getComposedParent(current)
+		}
+
+		return segments.join(' > ')
+	}
+
+	private getSignatureSegment(element: Element): string {
+		const tagName = element.tagName.toLowerCase()
+		const idSegment = element.id ? `#${element.id}` : ''
+		const nameSegment = element.getAttribute('name') ? `[name="${element.getAttribute('name')}"]` : ''
+		const roleSegment = element.getAttribute('role') ? `[role="${element.getAttribute('role')}"]` : ''
+		const typeSegment = element instanceof HTMLInputElement ? `[type="${element.type}"]` : ''
+
+		if (!element.parentElement) {
+			return `${tagName}${idSegment}${nameSegment}${typeSegment}${roleSegment}`
+		}
+
+		const siblingIndex = Array.from(element.parentElement.children)
+			.filter(sibling => sibling.tagName === element.tagName)
+			.indexOf(element) + 1
+
+		return `${tagName}${idSegment}${nameSegment}${typeSegment}${roleSegment}:nth-of-type(${siblingIndex})`
 	}
 
 	getFieldTypeDisplayName(type: string, subtype: string): string {

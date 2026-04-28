@@ -41,7 +41,7 @@ export class FormFillaContent {
 	private fieldDetector: FieldDetector
 	private interactionManager: InteractionManager
 	private mutationObserver: MutationObserver | null = null
-	private observedForms: Set<HTMLFormElement> = new Set()
+	private observedForms: Set<string> = new Set()
 
 	constructor() {
 		this.fieldDetector = new FieldDetector()
@@ -186,21 +186,21 @@ export class FormFillaContent {
 	}
 
 	private scanForms(): void {
-		const forms = document.querySelectorAll('form')
+		const snapshots = this.fieldDetector.collectFormSnapshots(document)
 
-		forms.forEach((form, index) => {
-			if (this.observedForms.has(form)) return
+		snapshots.forEach((snapshot, index) => {
+			if (this.observedForms.has(snapshot.domSignature)) return
 
-			const fields = this.fieldDetector.detectFields(form)
+			const fields = this.fieldDetector.detectFieldsFromSnapshot(snapshot)
 
 			if (fields.size > 0) {
-				this.addFormFillButton(form, fields, index)
-				this.observedForms.add(form)
+				this.addFormFillButton(snapshot.form, fields, index, snapshot.domSignature)
+				this.observedForms.add(snapshot.domSignature)
 			}
 		})
 	}
 
-	private addFormFillButton(form: HTMLFormElement, fields: Map<HTMLElement, FieldInfo>, _index: number): void {
+	private addFormFillButton(form: HTMLFormElement, fields: Map<HTMLElement, FieldInfo>, _index: number, formSignature: string): void {
 		// Check if button already exists
 		if (form.querySelector('.formfilla-form-btn')) return
 
@@ -249,6 +249,7 @@ export class FormFillaContent {
 			form.style.position = 'relative'
 		}
 
+		form.dataset.formfillaSnapshot = formSignature
 		form.appendChild(button)
 	}
 
@@ -289,8 +290,12 @@ export class FormFillaContent {
 		// Clean up any buttons when form is submitted
 		const form = event.target as HTMLFormElement
 		const formButton = form.querySelector('.formfilla-form-btn')
+		const snapshotSignature = form.dataset.formfillaSnapshot
 		if (formButton) {
 			formButton.remove()
+		}
+		if (snapshotSignature) {
+			this.observedForms.delete(snapshotSignature)
 		}
 	}
 
