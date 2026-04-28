@@ -95,52 +95,102 @@ export function sanitizeFieldValue(value: string, fieldType?: string): string {
 	}
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function safeString(value: unknown): string {
+	return typeof value === 'string' ? value : ''
+}
+
 /**
  * Validates profile data structure
  */
-export function validateProfileData(data: any): { isValid: boolean; errors: string[] } {
+export function validateProfileData(data: unknown): { isValid: boolean; errors: string[] } {
 	const errors: string[] = []
 
-	if (!data || typeof data !== 'object') {
+	if (!isRecord(data)) {
 		errors.push('Profile data must be an object')
 		return { isValid: false, errors }
 	}
 
+	const personal = isRecord(data.personal) ? data.personal : null
+	const company = isRecord(data.company) ? data.company : null
+	const address = isRecord(data.address) ? data.address : null
+	const payment = isRecord(data.payment) ? data.payment : null
+	const account = isRecord(data.account) ? data.account : null
+	const custom = isRecord(data.custom) ? data.custom : null
+
 	// Validate personal data
-	if (data.personal) {
-		if (data.personal.email && !isValidEmail(data.personal.email)) {
+	if (personal) {
+		const email = safeString(personal.email)
+		const phone = safeString(personal.phone)
+
+		if (email && !isValidEmail(email)) {
 			errors.push('Invalid email format')
 		}
 
-		if (data.personal.phone && !isValidPhone(data.personal.phone)) {
+		if (phone && !isValidPhone(phone)) {
 			errors.push('Invalid phone format')
 		}
 
 		// Check for malicious content in text fields
 		const textFields = ['firstName', 'lastName', 'fullName', 'dateOfBirth', 'age', 'gender', 'ssn']
 		textFields.forEach(field => {
-			if (data.personal[field] && containsMaliciousPatterns(data.personal[field])) {
+			const value = safeString(personal[field])
+			if (value && containsMaliciousPatterns(value)) {
 				errors.push(`Malicious content detected in ${field}`)
 			}
 		})
 	}
 
 	// Validate company data
-	if (data.company) {
+	if (company) {
 		const companyFields = ['name', 'title', 'department', 'website']
 		companyFields.forEach(field => {
-			if (data.company[field] && containsMaliciousPatterns(data.company[field])) {
+			const value = safeString(company[field])
+			if (value && containsMaliciousPatterns(value)) {
 				errors.push(`Malicious content detected in company ${field}`)
 			}
 		})
 	}
 
 	// Validate address data
-	if (data.address) {
+	if (address) {
 		const addressFields = ['street', 'street2', 'city', 'state', 'zip', 'country']
 		addressFields.forEach(field => {
-			if (data.address[field] && containsMaliciousPatterns(data.address[field])) {
+			const value = safeString(address[field])
+			if (value && containsMaliciousPatterns(value)) {
 				errors.push(`Malicious content detected in address ${field}`)
+			}
+		})
+	}
+
+	if (payment) {
+		const paymentFields = ['cardNumber', 'expiry', 'cvv', 'cardholderName']
+		paymentFields.forEach(field => {
+			const value = safeString(payment[field])
+			if (value && containsMaliciousPatterns(value)) {
+				errors.push(`Malicious content detected in payment ${field}`)
+			}
+		})
+	}
+
+	if (account) {
+		const accountFields = ['username', 'password']
+		accountFields.forEach(field => {
+			const value = safeString(account[field])
+			if (value && containsMaliciousPatterns(value)) {
+				errors.push(`Malicious content detected in account ${field}`)
+			}
+		})
+	}
+
+	if (custom) {
+		Object.entries(custom).forEach(([field, value]) => {
+			const normalizedValue = safeString(value)
+			if (normalizedValue && containsMaliciousPatterns(normalizedValue)) {
+				errors.push(`Malicious content detected in custom ${field}`)
 			}
 		})
 	}

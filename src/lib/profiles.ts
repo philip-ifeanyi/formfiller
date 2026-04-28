@@ -1,16 +1,23 @@
-import { Profile, ProfileData } from '@/types'
+import { PROFILE_SCHEMA_VERSION, Profile, ProfileData } from '@/types'
 import { StorageService } from './storage'
 
 export class ProfileManager {
 	constructor(private storage: StorageService) { }
 
+	private ensureSchemaVersion(profile: Profile): Profile {
+		return {
+			...profile,
+			schemaVersion: profile.schemaVersion ?? PROFILE_SCHEMA_VERSION
+		}
+	}
+
 	async createProfile(profileData: Omit<Profile, 'id' | 'createdAt' | 'updatedAt'>): Promise<Profile> {
-		const profile: Profile = {
+		const profile = this.ensureSchemaVersion({
 			...profileData,
 			id: this.generateId(),
 			createdAt: Date.now(),
 			updatedAt: Date.now()
-		}
+		})
 
 		const profiles = await this.storage.getProfiles()
 
@@ -39,11 +46,12 @@ export class ProfileManager {
 		profiles[profileIndex] = {
 			...profiles[profileIndex],
 			...updates,
+			schemaVersion: updates.schemaVersion ?? profiles[profileIndex].schemaVersion ?? PROFILE_SCHEMA_VERSION,
 			updatedAt: Date.now()
 		}
 
 		await this.storage.saveProfiles(profiles)
-		return profiles[profileIndex]
+		return this.ensureSchemaVersion(profiles[profileIndex])
 	}
 
 	async updateProfileData(id: string, updates: Partial<ProfileData>): Promise<Profile | null> {
@@ -63,11 +71,12 @@ export class ProfileManager {
 				account: { ...profiles[profileIndex].data.account, ...updates.account },
 				custom: { ...profiles[profileIndex].data.custom, ...updates.custom }
 			},
+			schemaVersion: profiles[profileIndex].schemaVersion ?? PROFILE_SCHEMA_VERSION,
 			updatedAt: Date.now()
 		}
 
 		await this.storage.saveProfiles(profiles)
-		return profiles[profileIndex]
+		return this.ensureSchemaVersion(profiles[profileIndex])
 	}
 
 	async deleteProfile(id: string): Promise<boolean> {
@@ -107,7 +116,7 @@ export class ProfileManager {
 		// If no default is set but profiles exist, set first profile as default
 		if (profiles.length > 0) {
 			await this.setDefaultProfile(profiles[0].id)
-			return { ...profiles[0], isDefault: true }
+			return this.ensureSchemaVersion({ ...profiles[0], isDefault: true })
 		}
 
 		return null
@@ -115,25 +124,27 @@ export class ProfileManager {
 
 	async getProfile(id: string): Promise<Profile | null> {
 		const profiles = await this.storage.getProfiles()
-		return profiles.find(p => p.id === id) || null
+		const profile = profiles.find(p => p.id === id)
+		return profile ? this.ensureSchemaVersion(profile) : null
 	}
 
 	async getAllProfiles(): Promise<Profile[]> {
-		return this.storage.getProfiles()
+		const profiles = await this.storage.getProfiles()
+		return profiles.map(profile => this.ensureSchemaVersion(profile))
 	}
 
 	async duplicateProfile(id: string, newName?: string): Promise<Profile | null> {
 		const original = await this.getProfile(id)
 		if (!original) return null
 
-		const duplicate: Profile = {
+		const duplicate = this.ensureSchemaVersion({
 			...original,
 			id: this.generateId(),
 			name: newName || `${original.name} (Copy)`,
 			isDefault: false,
 			createdAt: Date.now(),
 			updatedAt: Date.now()
-		}
+		})
 
 		const profiles = await this.storage.getProfiles()
 		profiles.push(duplicate)
@@ -160,8 +171,10 @@ export class ProfileManager {
 
 			// Generate new IDs for imported profiles to avoid conflicts
 			const profilesWithNewIds = importedProfiles.map(profile => ({
+				...this.ensureSchemaVersion(profile),
 				...profile,
 				id: this.generateId(),
+				schemaVersion: profile.schemaVersion ?? PROFILE_SCHEMA_VERSION,
 				isDefault: false,
 				createdAt: Date.now(),
 				updatedAt: Date.now()
