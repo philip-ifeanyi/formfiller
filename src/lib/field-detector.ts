@@ -1,4 +1,6 @@
 import {
+	type FieldEvidence,
+	type FieldEvidenceSource,
 	type FieldCandidate,
 	type FieldControlKind,
 	FieldInfo,
@@ -10,6 +12,24 @@ import {
 
 const CONTROL_SELECTOR = 'input, select, textarea'
 const SECTION_SELECTOR = 'fieldset, section, article, [role="group"], [data-form-section]'
+const EVIDENCE_WEIGHT_BY_SOURCE: Record<FieldEvidenceSource, number> = {
+	label: 1,
+	placeholder: 0.6,
+	'aria-label': 0.9,
+	'aria-labelledby': 0.95,
+	'aria-describedby': 0.5,
+	autocomplete: 1,
+	name: 0.95,
+	id: 0.75,
+	class: 0.35,
+	'data-attribute': 0.5,
+	'option-text': 0.45,
+	'surrounding-text': 0.4,
+	fieldset: 0.55,
+	'peer-context': 0.3,
+	'input-type': 0.8,
+	role: 0.4
+}
 
 type SearchRoot = Document | ShadowRoot | HTMLElement
 
@@ -190,8 +210,23 @@ export class FieldDetector {
 	}
 
 	detectField(element: FormControlElement): FieldInfo | null {
+		const ownerForm = element.form || element.closest('form')
+		const formId = ownerForm ? this.getFormIdentifier(ownerForm) : `detached:${this.buildDomSignature(element)}`
+		const sectionElement = ownerForm
+			? this.getSectionContainer(element, ownerForm)
+			: (element.closest(SECTION_SELECTOR) as HTMLElement | null) || element.parentElement || element
+		const sectionId = ownerForm
+			? this.getSectionIdentifier(sectionElement, formId)
+			: `${formId}::section:${this.buildDomSignature(sectionElement)}`
+		const sectionTitle = ownerForm ? this.getSectionTitle(sectionElement, ownerForm) : undefined
+		const candidate = this.createFieldCandidate(element, formId, sectionId, sectionElement, sectionTitle)
+
+		return this.detectFieldCandidate(candidate)
+	}
+
+	detectFieldCandidate(candidate: FieldCandidate): FieldInfo | null {
 		const fieldInfo: FieldInfo = {
-			element,
+			element: candidate.element,
 			type: '',
 			subtype: '',
 			confidence: 0,
@@ -201,7 +236,7 @@ export class FieldDetector {
 		// Check each category and field type
 		for (const [category, fields] of Object.entries(this.patterns)) {
 			for (const [fieldType, config] of Object.entries(fields)) {
-				const confidence = this.calculateConfidence(element, config)
+				const confidence = this.calculateConfidence(candidate, config)
 
 				if (confidence > fieldInfo.confidence) {
 					fieldInfo.type = category
@@ -222,7 +257,7 @@ export class FieldDetector {
 		const fieldMap = new Map<HTMLElement, FieldInfo>()
 
 		snapshot.candidates.forEach(candidate => {
-			const detectedField = this.detectField(candidate.element)
+			const detectedField = this.detectFieldCandidate(candidate)
 			if (detectedField) {
 				fieldMap.set(candidate.element, detectedField)
 			}
@@ -244,7 +279,8 @@ export class FieldDetector {
 		const candidates = controls.map(control => {
 			const sectionElement = this.getSectionContainer(control, form)
 			const sectionId = this.getSectionIdentifier(sectionElement, formId)
-			const candidate = this.createFieldCandidate(control, formId, sectionId)
+			const sectionTitle = this.getSectionTitle(sectionElement, form)
+			const candidate = this.createFieldCandidate(control, formId, sectionId, sectionElement, sectionTitle)
 			const existingSection = sectionBuckets.get(sectionId)
 
 			if (existingSection) {
@@ -252,7 +288,7 @@ export class FieldDetector {
 			} else {
 				sectionBuckets.set(sectionId, {
 					element: sectionElement,
-					title: this.getSectionTitle(sectionElement, form),
+					title: sectionTitle,
 					domSignature: this.buildDomSignature(sectionElement, form),
 					candidateIds: [candidate.id]
 				})
@@ -262,6 +298,7 @@ export class FieldDetector {
 		})
 
 		this.assignPeerIds(candidates)
+		this.appendPeerEvidence(candidates)
 
 		const sections: FormSectionSnapshot[] = Array.from(sectionBuckets.entries()).map(([id, bucket]) => ({
 			id,
@@ -318,22 +355,48 @@ export class FieldDetector {
 		return Array.from(controls)
 	}
 
-	private createFieldCandidate(element: FormControlElement, formId: string, sectionId: string): FieldCandidate {
+	private createFieldCandidate(
+		element: FormControlElement,
+		formId: string,
+		sectionId: string,
+		sectionElement: HTMLElement | HTMLFormElement,
+		sectionTitle?: string
+	): FieldCandidate {
+		const labelText = this.getAssociatedLabelText(element) || undefined
+		const placeholder = element.getAttribute('placeholder') || undefined
+		const autocomplete = element.getAttribute('autocomplete') || undefined
+		const attributes = this.collectAttributes(element)
+		const optionText = this.getOptionText(element)
+		const nearbyText = this.getNearbyText(element, sectionElement, sectionTitle)
+		const htmlType = element instanceof HTMLInputElement ? element.type : undefined
+		const role = element.getAttribute('role') || undefined
+
 		return {
 			id: `${formId}::${this.buildDomSignature(element)}`,
 			element,
 			formId,
 			sectionId,
 			controlKind: this.getControlKind(element),
-			htmlType: element instanceof HTMLInputElement ? element.type : undefined,
-			role: element.getAttribute('role') || undefined,
-			labelText: this.getAssociatedLabelText(element) || undefined,
-			placeholder: element.getAttribute('placeholder') || undefined,
-			autocomplete: element.getAttribute('autocomplete') || undefined,
-			attributes: this.collectAttributes(element),
-			optionText: this.getOptionText(element),
-			nearbyText: this.getNearbyText(element),
-			evidence: [],
+			htmlType,
+			role,
+			labelText,
+			placeholder,
+			autocomplete,
+			attributes,
+			optionText,
+			nearbyText,
+			evidence: this.extractFieldEvidence({
+				element,
+				labelText,
+				placeholder,
+				autocomplete,
+				attributes,
+				optionText,
+				nearbyText,
+				sectionTitle,
+				htmlType,
+				role
+			}),
 			peerIds: [],
 			domSignature: this.buildDomSignature(element),
 			visibility: this.getVisibilityState(element),
@@ -360,51 +423,169 @@ export class FieldDetector {
 		})
 	}
 
+	private appendPeerEvidence(candidates: FieldCandidate[]): void {
+		const candidateMap = new Map(candidates.map(candidate => [candidate.id, candidate]))
+
+		candidates.forEach(candidate => {
+			const peerTexts = (candidate.peerIds || [])
+				.map(peerId => candidateMap.get(peerId))
+				.flatMap(peer => {
+					if (!peer) return []
+
+					return [
+						peer.labelText,
+						peer.attributes.name,
+						peer.attributes.id,
+						...peer.optionText
+					].filter((value): value is string => Boolean(value))
+				})
+
+			candidate.evidence = this.mergeEvidence(
+				candidate.evidence,
+				this.createEvidenceEntries('peer-context', peerTexts)
+			)
+		})
+	}
+
 	private calculateConfidence(
-		element: FormControlElement,
+		candidate: FieldCandidate,
 		config: FieldPattern
 	): number {
 		let confidence = 0
 		const weights = { selector: 0.4, pattern: 0.3, autocomplete: 0.2, type: 0.1 }
 
 		// Check selectors
-		if (config.selectors?.some(sel => element.matches(sel))) {
+		if (config.selectors?.some(sel => candidate.element.matches(sel))) {
 			confidence += weights.selector
 		}
 
-		// Check patterns against various attributes
-		const textToCheck = [
-			element.getAttribute('name') || '',
-			element.id || '',
-			element.getAttribute('placeholder') || '',
-			element.getAttribute('aria-label') || '',
-			this.getAssociatedLabelText(element)
-		].join(' ').toLowerCase()
+		const textToCheck = this.buildEvidenceSearchText(candidate.evidence)
 
 		if (config.patterns?.some(pattern => pattern.test(textToCheck))) {
 			confidence += weights.pattern
 		}
 
 		// Check autocomplete attribute
-		const autocomplete = element.getAttribute('autocomplete') || ''
+		const autocomplete = candidate.autocomplete || ''
 		if (config.autocomplete?.includes(autocomplete)) {
 			confidence += weights.autocomplete
 		}
 
 		// Check input type for specific matches
-		if (element instanceof HTMLInputElement) {
-			if (element.type === 'email' && config.autocomplete?.includes('email')) {
+		if (candidate.element instanceof HTMLInputElement) {
+			if (candidate.element.type === 'email' && config.autocomplete?.includes('email')) {
 				confidence += weights.type
 			}
-			if (element.type === 'tel' && config.autocomplete?.includes('tel')) {
+			if (candidate.element.type === 'tel' && config.autocomplete?.includes('tel')) {
 				confidence += weights.type
 			}
-			if (element.type === 'password' && config.patterns?.some(p => /password/i.test(p.source))) {
+			if (candidate.element.type === 'password' && config.patterns?.some(p => /password/i.test(p.source))) {
 				confidence += weights.type
 			}
 		}
 
 		return confidence
+	}
+
+	private extractFieldEvidence(input: {
+		element: FormControlElement
+		labelText?: string
+		placeholder?: string
+		autocomplete?: string
+		attributes: Record<string, string>
+		optionText: string[]
+		nearbyText: string[]
+		sectionTitle?: string
+		htmlType?: string
+		role?: string
+	}): FieldEvidence[] {
+		const evidence = this.mergeEvidence(
+			this.createEvidenceEntries('label', [input.labelText]),
+			this.createEvidenceEntries('placeholder', [input.placeholder]),
+			this.createEvidenceEntries('aria-label', [input.attributes['aria-label']]),
+			this.createEvidenceEntries('aria-labelledby', this.getReferencedText(input.element, 'aria-labelledby')),
+			this.createEvidenceEntries('aria-describedby', this.getReferencedText(input.element, 'aria-describedby')),
+			this.createEvidenceEntries('autocomplete', [input.autocomplete]),
+			this.createEvidenceEntries('name', [input.attributes.name]),
+			this.createEvidenceEntries('id', [input.attributes.id || input.element.id]),
+			this.createEvidenceEntries('class', [input.attributes.class]),
+			this.createEvidenceEntries(
+				'data-attribute',
+				Object.entries(input.attributes)
+					.filter(([name]) => name.startsWith('data-'))
+					.map(([name, value]) => `${name} ${value}`)
+			),
+			this.createEvidenceEntries('option-text', input.optionText),
+			this.createEvidenceEntries('surrounding-text', input.nearbyText),
+			this.createEvidenceEntries('fieldset', [input.sectionTitle]),
+			this.createEvidenceEntries('input-type', [input.htmlType]),
+			this.createEvidenceEntries('role', [input.role])
+		)
+
+		return evidence
+	}
+
+	private createEvidenceEntries(source: FieldEvidenceSource, values: Array<string | undefined>): FieldEvidence[] {
+		const entries = new Map<string, FieldEvidence>()
+
+		values.forEach(value => {
+			if (!value) return
+
+			const raw = value.trim()
+			if (!raw) return
+
+			const normalized = this.normalizeEvidenceText(raw)
+			const key = `${source}:${normalized || raw.toLowerCase()}`
+			if (!entries.has(key)) {
+				entries.set(key, {
+					source,
+					raw,
+					normalized,
+					tokens: this.tokenizeEvidenceText(raw),
+					weight: EVIDENCE_WEIGHT_BY_SOURCE[source]
+				})
+			}
+		})
+
+		return Array.from(entries.values())
+	}
+
+	private mergeEvidence(...groups: FieldEvidence[][]): FieldEvidence[] {
+		const entries = new Map<string, FieldEvidence>()
+
+		groups.flat().forEach(entry => {
+			const key = `${entry.source}:${entry.normalized || entry.raw.toLowerCase()}`
+			if (!entries.has(key)) {
+				entries.set(key, entry)
+			}
+		})
+
+		return Array.from(entries.values())
+	}
+
+	private buildEvidenceSearchText(evidence: FieldEvidence[]): string {
+		return evidence
+			.flatMap(entry => [entry.raw, entry.normalized || '', ...(entry.tokens || [])])
+			.filter(Boolean)
+			.join(' ')
+			.toLowerCase()
+	}
+
+	private normalizeEvidenceText(value: string): string {
+		return value
+			.normalize('NFKD')
+			.replace(/[\u0300-\u036f]/g, '')
+			.replace(/([a-z\d])([A-Z])/g, '$1 $2')
+			.replace(/[_./:-]+/g, ' ')
+			.replace(/[^a-zA-Z\d\s]/g, ' ')
+			.toLowerCase()
+			.replace(/\s+/g, ' ')
+			.trim()
+	}
+
+	private tokenizeEvidenceText(value: string): string[] {
+		const normalized = this.normalizeEvidenceText(value)
+		return normalized ? normalized.split(' ').filter(Boolean) : []
 	}
 
 	private getSearchRoots(root: SearchRoot): SearchRoot[] {
@@ -562,20 +743,24 @@ export class FieldDetector {
 			.filter(Boolean)
 	}
 
-	private getNearbyText(element: FormControlElement): string[] {
+	private getNearbyText(
+		element: FormControlElement,
+		section: HTMLElement | HTMLFormElement,
+		sectionTitle?: string
+	): string[] {
 		const nearby = new Set<string>()
 		const labelText = this.getAssociatedLabelText(element)
 		const describedBy = this.getReferencedText(element, 'aria-describedby')
-		const section = this.getSectionContainer(element, element.form || element.closest('form') || document.createElement('form'))
 
 		if (labelText) nearby.add(labelText)
 		if (element.getAttribute('placeholder')) nearby.add(element.getAttribute('placeholder') || '')
 		describedBy.forEach(text => nearby.add(text))
 
-		if (section instanceof HTMLElement) {
-			const sectionTitle = this.getSectionTitle(section, element.form || document.createElement('form'))
-			if (sectionTitle) nearby.add(sectionTitle)
+		if (sectionTitle) {
+			nearby.add(sectionTitle)
+		}
 
+		if (section instanceof HTMLElement) {
 			const sectionText = section.textContent?.replace(/\s+/g, ' ').trim()
 			if (sectionText) {
 				nearby.add(sectionText.slice(0, 120))

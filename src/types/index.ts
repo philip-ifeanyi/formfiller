@@ -178,6 +178,7 @@ export interface FieldEvidence {
 	source: FieldEvidenceSource
 	raw: string
 	normalized?: string
+	tokens?: string[]
 	weight?: number
 }
 
