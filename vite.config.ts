@@ -10,6 +10,7 @@ export default defineConfig({
 	build: {
 		rollupOptions: {
 			input: {
+				migrationFixture: resolve(__dirname, 'migration-fixture.html'),
 				popup: resolve(__dirname, 'src/popup/index.html'),
 				options: resolve(__dirname, 'src/options/index.html'),
 				content: resolve(__dirname, 'src/content/index.ts'),

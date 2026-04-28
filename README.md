@@ -9,7 +9,6 @@ A powerful form-filling browser extension designed for developers and testers. A
 ## Features
 
 - **Smart Field Detection**: Automatically detects and fills various form field types including:
-
   - Personal information (names, email, phone, etc.)
   - Address information (street, city, state, zip, country)
   - Payment information (credit cards, expiry dates, CVV)
@@ -17,20 +16,17 @@ A powerful form-filling browser extension designed for developers and testers. A
   - Account information (usernames, passwords, websites)
 
 - **Multiple Interaction Methods**:
-
   - Form-level fill buttons that appear on detected forms
   - Individual field buttons when focusing on form fields
   - Context menu integration for right-click access
   - Extension popup for profile management
 
 - **Test Data Profiles**:
-
   - Pre-built test profiles (Developer, International, Edge Cases, QA Tester)
   - Custom user profiles with import/export functionality
   - Random data generation for comprehensive testing
 
 - **Developer-Friendly**:
-
   - Comprehensive field type detection
   - Visual feedback during form filling
   - Customizable fill speed and settings
@@ -61,6 +57,16 @@ A powerful form-filling browser extension designed for developers and testers. A
 3. Look for "Fill Form" buttons on complete forms
 4. Right-click on form fields to access context menu options
 5. Click the extension icon in the toolbar to access the popup
+
+### Verifying Profile Migration
+
+To manually verify legacy profile upgrades through the real storage layer:
+
+1. Run `npm run build`
+2. Open `dist/migrationFixture.html` in a browser
+3. Click "Run migration scenarios"
+
+The fixture seeds mock `chrome.storage` with both legacy array payloads and legacy string payloads, calls the real `StorageService.getProfiles()` migration path, and shows whether storage was rewritten with `schemaVersion`, canonical `values`, and compatibility `data`.
 
 ## Usage
 

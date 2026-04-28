@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>FormFilla Migration Fixture</title>
+	<style>
+		:root {
+			color-scheme: light;
+			font-family: "SF Pro Text", "Segoe UI", sans-serif;
+			background: #f4f7fb;
+			color: #172033;
+		}
+
+		body {
+			margin: 0;
+			padding: 32px;
+			background:
+				radial-gradient(circle at top left, rgba(55, 125, 255, 0.12), transparent 30%),
+				linear-gradient(180deg, #f9fbff 0%, #eef3fb 100%);
+		}
+
+		main {
+			max-width: 960px;
+			margin: 0 auto;
+		}
+
+		h1 {
+			font-size: 2.1rem;
+			margin-bottom: 8px;
+		}
+
+		p {
+			line-height: 1.5;
+		}
+
+		.panel {
+			background: rgba(255, 255, 255, 0.82);
+			backdrop-filter: blur(14px);
+			border: 1px solid rgba(23, 32, 51, 0.08);
+			border-radius: 18px;
+			padding: 24px;
+			box-shadow: 0 18px 60px rgba(25, 45, 90, 0.08);
+			margin-top: 24px;
+		}
+
+		.actions {
+			display: flex;
+			gap: 12px;
+			flex-wrap: wrap;
+			margin-top: 20px;
+		}
+
+		button {
+			border: 0;
+			border-radius: 999px;
+			padding: 12px 18px;
+			font: inherit;
+			cursor: pointer;
+			background: #1747ff;
+			color: #fff;
+			box-shadow: 0 12px 30px rgba(23, 71, 255, 0.24);
+		}
+
+		button.secondary {
+			background: #e7edf9;
+			color: #172033;
+			box-shadow: none;
+		}
+
+		button:disabled {
+			opacity: 0.6;
+			cursor: progress;
+		}
+
+		.status {
+			margin-top: 16px;
+			font-weight: 600;
+		}
+
+		.status[data-state="pass"] {
+			color: #166534;
+		}
+
+		.status[data-state="fail"] {
+			color: #b91c1c;
+		}
+
+		.results {
+			display: grid;
+			gap: 16px;
+			margin-top: 20px;
+		}
+
+		.result-card {
+			border-radius: 16px;
+			padding: 18px;
+			border: 1px solid rgba(23, 32, 51, 0.08);
+			background: #fff;
+		}
+
+		.result-card.pass {
+			border-color: rgba(22, 101, 52, 0.28);
+			background: linear-gradient(180deg, rgba(240, 253, 244, 1), rgba(255, 255, 255, 1));
+		}
+
+		.result-card.fail {
+			border-color: rgba(185, 28, 28, 0.28);
+			background: linear-gradient(180deg, rgba(254, 242, 242, 1), rgba(255, 255, 255, 1));
+		}
+
+		.result-card h2 {
+			margin: 0 0 12px;
+			font-size: 1.1rem;
+		}
+
+		ul {
+			margin: 0;
+			padding-left: 20px;
+		}
+
+		li+li {
+			margin-top: 8px;
+		}
+
+		code,
+		pre {
+			font-family: "SFMono-Regular", Consolas, monospace;
+		}
+
+		pre {
+			margin: 14px 0 0;
+			padding: 14px;
+			border-radius: 12px;
+			background: #0f172a;
+			color: #e2e8f0;
+			overflow: auto;
+			font-size: 0.85rem;
+		}
+	</style>
+</head>
+
+<body>
+	<main>
+		<section class="panel">
+			<h1>Profile Migration Fixture</h1>
+			<p>
+				This harness seeds mock <code>chrome.storage</code> with legacy profile payloads, invokes the real
+				<code>StorageService</code> migration path, and verifies that storage is rewritten with
+				<code>schemaVersion</code>, canonical <code>values</code>, and compatibility <code>data</code>.
+			</p>
+			<div class="actions">
+				<button id="run-fixture">Run migration scenarios</button>
+				<button id="reset-fixture" class="secondary">Reset output</button>
+			</div>
+			<div id="fixture-status" class="status" data-state="idle">Ready.</div>
+		</section>
+
+		<section class="panel">
+			<div id="fixture-results" class="results"></div>
+		</section>
+	</main>
+
+	<script type="module" src="/src/dev/storage-migration-fixture.ts"></script>
+</body>
+
+</html>
