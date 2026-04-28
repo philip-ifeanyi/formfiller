@@ -1,0 +1,712 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>FormFilla Hell Mode - Ultimate Form Test</title>
+	<style>
+		@import url('https://fonts.googleapis.com/css2?family=Creepster&family=Nosifer&display=swap');
+
+		* {
+			margin: 0;
+			padding: 0;
+			box-sizing: border-box;
+		}
+
+		body {
+			background: linear-gradient(45deg, #1a0000, #330000, #1a0000, #660000);
+			background-size: 400% 400%;
+			animation: hellBackground 10s ease-in-out infinite;
+			color: #ff4444;
+			font-family: 'Courier New', monospace;
+			min-height: 100vh;
+			padding: 20px;
+			position: relative;
+			overflow-x: auto;
+		}
+
+		@keyframes hellBackground {
+
+			0%,
+			100% {
+				background-position: 0% 50%;
+			}
+
+			50% {
+				background-position: 100% 50%;
+			}
+		}
+
+		body::before {
+			content: '';
+			position: fixed;
+			top: 0;
+			left: 0;
+			width: 100%;
+			height: 100%;
+			background: radial-gradient(circle at 50% 50%, transparent 0%, rgba(255, 0, 0, 0.1) 50%, rgba(0, 0, 0, 0.8) 100%);
+			pointer-events: none;
+			z-index: -1;
+		}
+
+		h1 {
+			font-family: 'Nosifer', cursive;
+			text-align: center;
+			font-size: 3rem;
+			margin-bottom: 20px;
+			text-shadow: 0 0 20px #ff0000, 0 0 40px #ff0000;
+			animation: flicker 2s infinite alternate;
+		}
+
+		@keyframes flicker {
+
+			0%,
+			50%,
+			100% {
+				opacity: 1;
+			}
+
+			25%,
+			75% {
+				opacity: 0.8;
+			}
+		}
+
+		.warning {
+			background: rgba(255, 0, 0, 0.2);
+			border: 2px solid #ff4444;
+			padding: 15px;
+			margin: 20px 0;
+			border-radius: 10px;
+			text-align: center;
+			font-weight: bold;
+			animation: pulse 2s infinite;
+		}
+
+		@keyframes pulse {
+
+			0%,
+			100% {
+				transform: scale(1);
+			}
+
+			50% {
+				transform: scale(1.02);
+			}
+		}
+
+		.hell-container {
+			background: rgba(0, 0, 0, 0.8);
+			border: 3px solid #ff4444;
+			padding: 30px;
+			margin: 30px 0;
+			border-radius: 15px;
+			box-shadow: 0 0 50px rgba(255, 0, 0, 0.3), inset 0 0 50px rgba(255, 0, 0, 0.1);
+			position: relative;
+		}
+
+		.hell-container::before {
+			content: '⚠️ DANGER ZONE ⚠️';
+			position: absolute;
+			top: -15px;
+			left: 50%;
+			transform: translateX(-50%);
+			background: #ff0000;
+			color: #fff;
+			padding: 5px 15px;
+			border-radius: 5px;
+			font-weight: bold;
+			font-size: 0.8rem;
+		}
+
+		h2 {
+			font-family: 'Creepster', cursive;
+			color: #ff6666;
+			margin-bottom: 20px;
+			text-shadow: 0 0 10px #ff0000;
+			font-size: 1.8rem;
+		}
+
+		label {
+			display: block;
+			margin: 15px 0 8px 0;
+			font-weight: bold;
+			color: #ffaaaa;
+			text-shadow: 0 0 5px #ff0000;
+		}
+
+		input,
+		textarea,
+		select {
+			width: 100%;
+			padding: 12px;
+			border: 2px solid #ff4444;
+			border-radius: 8px;
+			margin-bottom: 15px;
+			background: rgba(0, 0, 0, 0.7);
+			color: #fff;
+			font-size: 14px;
+			transition: all 0.3s ease;
+		}
+
+		input:focus,
+		textarea:focus,
+		select:focus {
+			outline: none;
+			border-color: #ff0000;
+			box-shadow: 0 0 20px rgba(255, 0, 0, 0.5);
+			background: rgba(20, 0, 0, 0.9);
+		}
+
+		input::placeholder,
+		textarea::placeholder {
+			color: #888;
+		}
+
+		.evil-input {
+			background: linear-gradient(45deg, #330000, #1a0000);
+			border: 1px solid #666;
+			animation: evilGlow 3s ease-in-out infinite alternate;
+		}
+
+		@keyframes evilGlow {
+			from {
+				box-shadow: 0 0 5px #ff0000;
+			}
+
+			to {
+				box-shadow: 0 0 25px #ff4444, 0 0 35px #ff0000;
+			}
+		}
+
+		.hidden-field {
+			position: absolute;
+			left: -9999px;
+			opacity: 0;
+		}
+
+		.dynamic-container {
+			border: 2px dashed #ff4444;
+			padding: 20px;
+			margin: 20px 0;
+			min-height: 100px;
+			background: rgba(50, 0, 0, 0.3);
+		}
+
+		.nested-form {
+			background: rgba(100, 0, 0, 0.2);
+			padding: 20px;
+			border: 1px solid #994444;
+			margin: 15px 0;
+			border-radius: 10px;
+		}
+
+		.hell-button {
+			background: linear-gradient(45deg, #ff0000, #990000, #ff0000);
+			color: white;
+			padding: 15px 30px;
+			border: none;
+			border-radius: 8px;
+			cursor: pointer;
+			font-weight: bold;
+			text-transform: uppercase;
+			transition: all 0.3s ease;
+			margin: 10px;
+			box-shadow: 0 5px 15px rgba(255, 0, 0, 0.3);
+		}
+
+		.hell-button:hover {
+			background: linear-gradient(45deg, #ff4444, #cc0000, #ff4444);
+			transform: translateY(-3px);
+			box-shadow: 0 8px 25px rgba(255, 0, 0, 0.5);
+		}
+
+		.matrix-input {
+			display: grid;
+			grid-template-columns: repeat(4, 1fr);
+			gap: 10px;
+			margin: 20px 0;
+		}
+
+		.matrix-input input {
+			margin: 0;
+		}
+
+		.conditional-field {
+			opacity: 0;
+			max-height: 0;
+			overflow: hidden;
+			transition: all 0.5s ease;
+		}
+
+		.conditional-field.active {
+			opacity: 1;
+			max-height: 200px;
+		}
+
+		.chaos-container {
+			transform: rotate(-1deg);
+			margin: 30px 0;
+		}
+
+		.chaos-container:nth-child(even) {
+			transform: rotate(1deg);
+		}
+
+		.evil-fieldset {
+			border: 2px solid #ff4444;
+			border-radius: 10px;
+			padding: 20px;
+			margin: 20px 0;
+			background: rgba(0, 0, 0, 0.5);
+		}
+
+		.evil-legend {
+			color: #ff6666;
+			font-weight: bold;
+			padding: 0 10px;
+			text-shadow: 0 0 5px #ff0000;
+		}
+
+		.shadow-host {
+			background: rgba(255, 0, 0, 0.1);
+			padding: 20px;
+			border: 2px dashed #ff4444;
+			margin: 20px 0;
+			border-radius: 10px;
+		}
+
+		.iframe-container {
+			border: 3px solid #ff0000;
+			border-radius: 10px;
+			overflow: hidden;
+			margin: 20px 0;
+		}
+
+		@media (max-width: 768px) {
+			.matrix-input {
+				grid-template-columns: repeat(2, 1fr);
+			}
+		}
+
+		.progress-bar {
+			width: 100%;
+			height: 20px;
+			background: rgba(0, 0, 0, 0.5);
+			border-radius: 10px;
+			overflow: hidden;
+			margin: 20px 0;
+		}
+
+		.progress-fill {
+			height: 100%;
+			background: linear-gradient(90deg, #ff0000, #ff4444, #ff0000);
+			width: 0%;
+			transition: width 0.3s ease;
+			animation: progressGlow 2s ease-in-out infinite alternate;
+		}
+
+		@keyframes progressGlow {
+			from {
+				box-shadow: 0 0 10px #ff0000;
+			}
+
+			to {
+				box-shadow: 0 0 20px #ff4444;
+			}
+		}
+	</style>
+</head>
+
+<body>
+	<h1>🔥 FORMFILLA HELL MODE 🔥</h1>
+
+	<div class="warning">
+		⚠️ WARNING: This page contains the most diabolical form combinations known to web development.
+		If your form filler survives this, it can handle anything! ⚠️
+	</div>
+
+	<!-- Progress Bar -->
+	<div class="progress-bar">
+		<div class="progress-fill" id="progressFill"></div>
+	</div>
+
+	<!-- Dynamic Hell Form -->
+	<div class="hell-container">
+		<h2>🔥 Dynamic Hell Form</h2>
+		<form id="hellForm">
+			<!-- Crazy Name Fields -->
+			<label for="ñäme_wîth-spëcîál_çhars">Name with Special Characters:</label>
+			<input type="text" id="ñäme_wîth-spëcîál_çhars" name="firstName" autocomplete="given-name" data-evil="true"
+				class="evil-input" placeholder="Enter your cursed name...">
+
+			<label for="data-testid-surname">Surname (Test ID Selector):</label>
+			<input type="text" data-testid="surname" name="lastName" autocomplete="family-name"
+				placeholder="Last name via data-testid">
+
+			<label for="email123">Email with Numbers:</label>
+			<input type="email" id="email123" name="email_address" autocomplete="email"
+				pattern="[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$" placeholder="your.cursed@email.com">
+
+			<!-- Hidden Field that Gets Revealed -->
+			<input type="hidden" id="hiddenField" name="hiddenValue" value="">
+
+			<!-- Dynamic Phone Field -->
+			<label for="phoneNumberDynamic">Phone (Changes Type Dynamically):</label>
+			<input type="text" id="phoneNumberDynamic" name="phone" autocomplete="tel" placeholder="+1 (555) 666-HELL">
+
+			<button type="button" class="hell-button" onclick="transformPhoneField()">Transform Phone Field</button>
+		</form>
+	</div>
+
+	<!-- Matrix Input Hell -->
+	<div class="hell-container chaos-container">
+		<h2>🌀 Matrix Input Chaos</h2>
+		<form>
+			<label>Credit Card Matrix (Split Across Multiple Fields):</label>
+			<div class="matrix-input">
+				<input type="text" name="cc_part1" maxlength="4" placeholder="1234" autocomplete="cc-number">
+				<input type="text" name="cc_part2" maxlength="4" placeholder="5678" autocomplete="off">
+				<input type="text" name="cc_part3" maxlength="4" placeholder="9012" autocomplete="off">
+				<input type="text" name="cc_part4" maxlength="4" placeholder="3456" autocomplete="off">
+			</div>
+
+			<label>Date of Birth Matrix:</label>
+			<div class="matrix-input">
+				<input type="text" name="dob_month" placeholder="MM" maxlength="2" autocomplete="bday-month">
+				<input type="text" name="dob_day" placeholder="DD" maxlength="2" autocomplete="bday-day">
+				<input type="text" name="dob_year" placeholder="YYYY" maxlength="4" autocomplete="bday-year">
+				<select name="dob_era">
+					<option value="AD">AD</option>
+					<option value="BC">BC</option>
+				</select>
+			</div>
+		</form>
+	</div>
+
+	<!-- Nested Forms Hell -->
+	<div class="hell-container">
+		<h2>🌪️ Nested Forms Nightmare</h2>
+		<form id="outerForm">
+			<label for="outerName">Outer Form Name:</label>
+			<input type="text" id="outerName" name="outerName" placeholder="Outer form input">
+
+			<div class="nested-form">
+				<h3>Nested Form Level 1</h3>
+				<form id="nestedForm1">
+					<label for="nestedName1">Nested Name 1:</label>
+					<input type="text" id="nestedName1" name="nestedName1" placeholder="First nested level">
+
+					<div class="nested-form">
+						<h4>Nested Form Level 2</h4>
+						<form id="nestedForm2">
+							<label for="nestedName2">Nested Name 2:</label>
+							<input type="text" id="nestedName2" name="nestedName2" placeholder="Second nested level">
+
+							<fieldset class="evil-fieldset">
+								<legend class="evil-legend">Evil Fieldset</legend>
+								<label for="fieldsetInput">Fieldset Input:</label>
+								<input type="text" id="fieldsetInput" name="fieldsetInput" placeholder="Input in fieldset">
+							</fieldset>
+						</form>
+					</div>
+				</form>
+			</div>
+		</form>
+	</div>
+
+	<!-- Dynamic Fields Hell -->
+	<div class="hell-container">
+		<h2>⚡ Dynamic Fields Hell</h2>
+		<form id="dynamicForm">
+			<label for="triggerField">Trigger Field (Type to reveal more fields):</label>
+			<input type="text" id="triggerField" placeholder="Type 'hellmode' to unlock..."
+				onkeyup="revealHiddenFields(this.value)">
+
+			<div id="hiddenFields" class="conditional-field">
+				<label for="secretField1">Secret Field 1:</label>
+				<input type="text" id="secretField1" name="secretField1" placeholder="You found the secret!">
+
+				<label for="secretField2">Secret Field 2:</label>
+				<input type="password" id="secretField2" name="secretField2" placeholder="Enter the forbidden password">
+
+				<label for="secretSelect">Secret Select:</label>
+				<select id="secretSelect" name="secretSelect">
+					<option value="">Choose your fate...</option>
+					<option value="developer">Developer's Path</option>
+					<option value="tester">Tester's Trial</option>
+					<option value="signatory">Signatory's Seal</option>
+					<option value="owner">Owner's Oath</option>
+				</select>
+			</div>
+
+			<button type="button" class="hell-button" onclick="addDynamicField()">Summon Random Field</button>
+			<div id="dynamicContainer" class="dynamic-container"></div>
+		</form>
+	</div>
+
+	<!-- Multi-step Form Hell -->
+	<div class="hell-container chaos-container">
+		<h2>🚶‍♂️ Multi-Step Hell Journey</h2>
+		<form id="multiStepForm">
+			<div id="step1" class="step active">
+				<h3>Step 1: Personal Damnation</h3>
+				<label for="firstName_step1">First Name:</label>
+				<input type="text" id="firstName_step1" name="firstName" autocomplete="given-name">
+
+				<label for="lastName_step1">Last Name:</label>
+				<input type="text" id="lastName_step1" name="lastName" autocomplete="family-name">
+
+				<button type="button" class="hell-button" onclick="nextStep(2)">Next ➜</button>
+			</div>
+
+			<div id="step2" class="step" style="display: none;">
+				<h3>Step 2: Contact Information</h3>
+				<label for="email_step2">Email:</label>
+				<input type="email" id="email_step2" name="email" autocomplete="email">
+
+				<label for="phone_step2">Phone:</label>
+				<input type="tel" id="phone_step2" name="phone" autocomplete="tel">
+
+				<button type="button" class="hell-button" onclick="nextStep(1)">← Prev</button>
+				<button type="button" class="hell-button" onclick="nextStep(3)">Next ➜</button>
+			</div>
+
+			<div id="step3" class="step" style="display: none;">
+				<h3>Step 3: Final Judgment</h3>
+				<label for="finalField">Final Field:</label>
+				<textarea id="finalField" name="finalMessage" placeholder="Your final words..."></textarea>
+
+				<button type="button" class="hell-button" onclick="nextStep(2)">← Prev</button>
+				<button type="submit" class="hell-button">Complete Hell Form</button>
+			</div>
+		</form>
+	</div>
+
+	<!-- Shadow DOM Hell -->
+	<div class="hell-container">
+		<h2>👻 Shadow DOM Hell</h2>
+		<div id="shadowHost" class="shadow-host">
+			<p>Shadow DOM fields are created here via JavaScript...</p>
+		</div>
+	</div>
+
+	<!-- Autocomplete Chaos -->
+	<div class="hell-container chaos-container">
+		<h2>🎯 Autocomplete Attribute Chaos</h2>
+		<form>
+			<label for="autocomplete1">Normal Email:</label>
+			<input type="email" id="autocomplete1" autocomplete="email" placeholder="normal@email.com">
+
+			<label for="autocomplete2">Work Email:</label>
+			<input type="email" id="autocomplete2" autocomplete="work email" placeholder="work@email.com">
+
+			<label for="autocomplete3">Home Email:</label>
+			<input type="email" id="autocomplete3" autocomplete="home email" placeholder="home@email.com">
+
+			<label for="autocomplete4">Shipping Address:</label>
+			<input type="text" id="autocomplete4" autocomplete="shipping address-line1" placeholder="123 Shipping St">
+
+			<label for="autocomplete5">Billing Address:</label>
+			<input type="text" id="autocomplete5" autocomplete="billing address-line1" placeholder="456 Billing Ave">
+
+			<label for="autocomplete6">CC Name:</label>
+			<input type="text" id="autocomplete6" autocomplete="cc-name" placeholder="Cardholder Name">
+
+			<label for="autocomplete7">CC Number:</label>
+			<input type="text" id="autocomplete7" autocomplete="cc-number" placeholder="1234567890123456">
+
+			<label for="autocomplete8">CC Exp Month:</label>
+			<input type="text" id="autocomplete8" autocomplete="cc-exp-month" placeholder="12">
+
+			<label for="autocomplete9">CC Exp Year:</label>
+			<input type="text" id="autocomplete9" autocomplete="cc-exp-year" placeholder="2025">
+
+			<label for="autocomplete10">CC CVC:</label>
+			<input type="text" id="autocomplete10" autocomplete="cc-csc" placeholder="123">
+		</form>
+	</div>
+
+	<!-- Evil Input Types -->
+	<div class="hell-container">
+		<h2>👹 Evil Input Types</h2>
+		<form>
+			<label for="colorInput">Color of Your Soul:</label>
+			<input type="color" id="colorInput" name="soulColor" value="#ff0000">
+
+			<label for="rangeInput">Hell Temperature:</label>
+			<input type="range" id="rangeInput" name="temperature" min="0" max="666" value="333">
+
+			<label for="fileInput">Upload Your Sins:</label>
+			<input type="file" id="fileInput" name="sins" multiple accept=".txt,.pdf,.soul">
+
+			<label for="dateInput">Date of Doom:</label>
+			<input type="date" id="dateInput" name="doomDate">
+
+			<label for="timeInput">Time of Reckoning:</label>
+			<input type="time" id="timeInput" name="reckoningTime">
+
+			<label for="datetimeInput">DateTime of Judgment:</label>
+			<input type="datetime-local" id="datetimeInput" name="judgmentDateTime">
+
+			<label for="weekInput">Week of Chaos:</label>
+			<input type="week" id="weekInput" name="chaosWeek">
+
+			<label for="monthInput">Month of Madness:</label>
+			<input type="month" id="monthInput" name="madnessMonth">
+
+			<label for="numberInput">Number of the Beast:</label>
+			<input type="number" id="numberInput" name="beastNumber" min="0" max="666" step="6">
+
+			<label for="searchInput">Search Your Fears:</label>
+			<input type="search" id="searchInput" name="fearSearch" placeholder="What terrifies you?">
+
+			<label for="urlInput">URL to Hell:</label>
+			<input type="url" id="urlInput" name="hellUrl" placeholder="https://hell.com">
+		</form>
+	</div>
+
+	<script>
+		let dynamicFieldCount = 0;
+		let currentStep = 1;
+
+		// Create Shadow DOM
+		function createShadowDOM() {
+			const shadowHost = document.getElementById('shadowHost');
+			const shadowRoot = shadowHost.attachShadow({ mode: 'open' });
+
+			shadowRoot.innerHTML = `
+				<style>
+					input { 
+						background: #330000; 
+						color: #ff4444; 
+						border: 1px solid #ff4444; 
+						padding: 10px; 
+						margin: 10px 0; 
+						width: 100%;
+						border-radius: 5px;
+					}
+					label { color: #ff6666; display: block; margin: 10px 0 5px 0; }
+				</style>
+				<form>
+					<label for="shadowEmail">Shadow Realm Email:</label>
+					<input type="email" id="shadowEmail" name="shadowEmail" autocomplete="email" placeholder="shadow@realm.hell">
+					
+					<label for="shadowName">Shadow Entity Name:</label>
+					<input type="text" id="shadowName" name="shadowName" autocomplete="name" placeholder="Enter your shadow name">
+					
+					<label for="shadowPassword">Shadow Realm Password:</label>
+					<input type="password" id="shadowPassword" name="shadowPassword" autocomplete="current-password" placeholder="Your darkest secret">
+				</form>
+			`;
+		}
+
+		// Transform phone field dynamically
+		function transformPhoneField() {
+			const phoneField = document.getElementById('phoneNumberDynamic');
+			const currentType = phoneField.type;
+
+			if (currentType === 'text') {
+				phoneField.type = 'tel';
+				phoneField.placeholder = 'Now I am tel type!';
+			} else {
+				phoneField.type = 'email';
+				phoneField.placeholder = 'Now I am email type!';
+			}
+
+			setTimeout(() => {
+				phoneField.type = 'text';
+				phoneField.placeholder = 'Back to text type!';
+			}, 3000);
+		}
+
+		// Reveal hidden fields
+		function revealHiddenFields(value) {
+			const hiddenFields = document.getElementById('hiddenFields');
+			const hiddenInput = document.getElementById('hiddenField');
+
+			if (value.toLowerCase() === 'hellmode') {
+				hiddenFields.classList.add('active');
+				hiddenInput.type = 'text';
+				hiddenInput.style.position = 'static';
+				hiddenInput.style.opacity = '1';
+				hiddenInput.placeholder = 'I was hidden, now revealed!';
+			} else {
+				hiddenFields.classList.remove('active');
+				hiddenInput.type = 'hidden';
+			}
+
+			updateProgress();
+		}
+
+		// Add dynamic field
+		function addDynamicField() {
+			const container = document.getElementById('dynamicContainer');
+			dynamicFieldCount++;
+
+			const fieldTypes = ['text', 'email', 'tel', 'url', 'search', 'password'];
+			const randomType = fieldTypes[Math.floor(Math.random() * fieldTypes.length)];
+
+			const div = document.createElement('div');
+			div.innerHTML = `
+				<label for="dynamic_${dynamicFieldCount}">Dynamic Field ${dynamicFieldCount} (${randomType}):</label>
+				<input type="${randomType}" id="dynamic_${dynamicFieldCount}" name="dynamic_${dynamicFieldCount}" 
+					   placeholder="I was created at ${new Date().toLocaleTimeString()}" 
+					   data-dynamic="true" class="evil-input">
+				<button type="button" onclick="this.parentElement.remove()" class="hell-button">Remove This Field</button>
+			`;
+			container.appendChild(div);
+
+			updateProgress();
+		}
+
+		// Multi-step navigation
+		function nextStep(stepNumber) {
+			document.querySelectorAll('.step').forEach(step => step.style.display = 'none');
+			document.getElementById(`step${stepNumber}`).style.display = 'block';
+			currentStep = stepNumber;
+			updateProgress();
+		}
+
+		// Update progress bar
+		function updateProgress() {
+			const totalFields = document.querySelectorAll('input, textarea, select').length;
+			const filledFields = document.querySelectorAll('input[value]:not([value=""]), textarea:not(:empty), select option:checked').length;
+			const progress = Math.min((filledFields / totalFields) * 100, 100);
+
+			document.getElementById('progressFill').style.width = progress + '%';
+		}
+
+		// Initialize everything
+		document.addEventListener('DOMContentLoaded', function () {
+			createShadowDOM();
+
+			// Add event listeners to update progress
+			document.querySelectorAll('input, textarea, select').forEach(element => {
+				element.addEventListener('input', updateProgress);
+				element.addEventListener('change', updateProgress);
+			});
+
+			// Prevent form submission
+			document.querySelectorAll('form').forEach(form => {
+				form.addEventListener('submit', (e) => {
+					e.preventDefault();
+					alert('🔥 Form submission survived Hell Mode! Your FormFilla extension is truly powerful! 🔥');
+				});
+			});
+
+			// Random field mutations
+			setInterval(() => {
+				const randomField = document.querySelector('input.evil-input');
+				if (randomField && Math.random() > 0.8) {
+					randomField.style.background = `rgba(${Math.random() * 100}, 0, 0, 0.8)`;
+				}
+			}, 2000);
+
+			console.log('🔥 Hell Mode initialized. May your form filler survive this ordeal! 🔥');
+		});
+	</script>
+</body>
+
+</html>

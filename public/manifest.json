@@ -1,0 +1,91 @@
+{
+  "manifest_version": 3,
+  "name": "FormFilla",
+  "version": "1.1.0",
+  "description": "Auto-fill forms with test data profiles for developers and testers",
+  "permissions": [
+    "storage",
+    "activeTab",
+    "contextMenus"
+  ],
+  "host_permissions": [
+    "http://localhost/*",
+    "https://localhost/*",
+    "http://127.0.0.1/*",
+    "https://127.0.0.1/*",
+    "http://*.local/*",
+    "https://*.local/*",
+    "http://*.test/*",
+    "https://*.test/*",
+    "http://*.dev/*",
+    "https://*.dev/*",
+    "http://*.staging/*",
+    "https://*.staging/*",
+    "http://*.uat/*",
+    "https://*.uat/*",
+    "file:///*"
+  ],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'; frame-src 'none'; worker-src 'none';"
+  },
+  "background": {
+    "service_worker": "src/background/index.ts",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "http://localhost/*",
+        "https://localhost/*",
+        "http://127.0.0.1/*",
+        "https://127.0.0.1/*",
+        "http://*.local/*",
+        "https://*.local/*",
+        "http://*.test/*",
+        "https://*.test/*",
+        "http://*.dev/*",
+        "https://*.dev/*",
+        "http://*.staging/*",
+        "https://*.staging/*",
+        "http://*.uat/*",
+        "https://*.uat/*",
+        "file:///*"
+      ],
+      "js": ["src/content/index.ts"],
+      "run_at": "document_end"
+    }
+  ],
+  "action": {
+    "default_popup": "src/popup/index.html",
+    "default_title": "FormFilla"
+  },
+  "options_page": "src/options/index.html",
+  "web_accessible_resources": [
+    {
+      "resources": ["assets/*"],
+      "matches": [
+        "http://localhost/*",
+        "https://localhost/*",
+        "http://127.0.0.1/*",
+        "https://127.0.0.1/*",
+        "http://*.local/*",
+        "https://*.local/*",
+        "http://*.test/*",
+        "https://*.test/*",
+        "http://*.dev/*",
+        "https://*.dev/*",
+        "http://*.staging/*",
+        "https://*.staging/*",
+        "http://*.uat/*",
+        "https://*.uat/*",
+        "file:///*"
+      ]
+    }
+  ],
+  "icons": {
+    "16": "assets/icon16.png",
+    "32": "assets/icon32.png",
+    "48": "assets/icon48.png",
+    "128": "assets/icon128.png"
+  }
+}

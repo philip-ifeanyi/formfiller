@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>FormFilla Test Page</title>
+	<style>
+		body {
+			font-family: Arial, sans-serif;
+			max-width: 800px;
+			margin: 0 auto;
+			padding: 20px;
+		}
+
+		.form-container {
+			border: 1px solid #ddd;
+			padding: 20px;
+			margin: 20px 0;
+			border-radius: 8px;
+		}
+
+		label {
+			display: block;
+			margin: 10px 0 5px 0;
+			font-weight: bold;
+		}
+
+		input,
+		textarea,
+		select {
+			width: 100%;
+			padding: 8px;
+			border: 1px solid #ccc;
+			border-radius: 4px;
+			margin-bottom: 10px;
+			box-sizing: border-box;
+		}
+
+		button {
+			background: #007bff;
+			color: white;
+			padding: 10px 20px;
+			border: none;
+			border-radius: 4px;
+			cursor: pointer;
+		}
+
+		button:hover {
+			background: #0056b3;
+		}
+	</style>
+</head>
+
+<body>
+	<h1>FormFilla Extension Test Page</h1>
+	<p>Use this page to test the FormFilla browser extension. After installing the extension, you should see:</p>
+	<ul>
+		<li>Form fill buttons appear when focusing on form fields</li>
+		<li>A "Fill Form" button on each complete form</li>
+		<li>Context menu options when right-clicking on form fields</li>
+		<li>Extension popup accessible via the browser toolbar</li>
+	</ul>
+
+	<div class="form-container">
+		<h2>Personal Information Form</h2>
+		<form>
+			<label for="firstName">First Name:</label>
+			<input type="text" id="firstName" name="firstName" placeholder="Enter your first name">
+
+			<label for="lastName">Last Name:</label>
+			<input type="text" id="lastName" name="lastName" placeholder="Enter your last name">
+
+			<label for="email">Email:</label>
+			<input type="email" id="email" name="email" placeholder="Enter your email">
+
+			<label for="phone">Phone Number:</label>
+			<input type="tel" id="phone" name="phone" placeholder="Enter your phone number">
+
+			<label for="dateOfBirth">Date of Birth:</label>
+			<input type="date" id="dateOfBirth" name="dateOfBirth">
+
+			<label for="gender">Gender:</label>
+			<select id="gender" name="gender">
+				<option value="">Select gender</option>
+				<option value="male">Male</option>
+				<option value="female">Female</option>
+				<option value="other">Other</option>
+				<option value="prefer-not-to-say">Prefer not to say</option>
+			</select>
+
+			<button type="submit">Submit Personal Info</button>
+		</form>
+	</div>
+
+	<div class="form-container">
+		<h2>Address Information</h2>
+		<form>
+			<label for="street">Street Address:</label>
+			<input type="text" id="street" name="street" placeholder="Enter street address">
+
+			<label for="city">City:</label>
+			<input type="text" id="city" name="city" placeholder="Enter city">
+
+			<label for="state">State/Province:</label>
+			<input type="text" id="state" name="state" placeholder="Enter state or province">
+
+			<label for="zipCode">ZIP/Postal Code:</label>
+			<input type="text" id="zipCode" name="zipCode" placeholder="Enter ZIP or postal code">
+
+			<label for="country">Country:</label>
+			<select id="country" name="country">
+				<option value="">Select country</option>
+				<option value="US">United States</option>
+				<option value="CA">Canada</option>
+				<option value="GB">United Kingdom</option>
+				<option value="DE">Germany</option>
+				<option value="FR">France</option>
+				<option value="JP">Japan</option>
+				<option value="AU">Australia</option>
+			</select>
+
+			<button type="submit">Submit Address</button>
+		</form>
+	</div>
+
+	<div class="form-container">
+		<h2>Payment Information</h2>
+		<form>
+			<label for="cardNumber">Credit Card Number:</label>
+			<input type="text" id="cardNumber" name="cardNumber" placeholder="Enter credit card number">
+
+			<label for="expiryDate">Expiry Date:</label>
+			<input type="text" id="expiryDate" name="expiryDate" placeholder="MM/YY">
+
+			<label for="cvv">CVV:</label>
+			<input type="text" id="cvv" name="cvv" placeholder="Enter CVV">
+
+			<label for="cardholderName">Cardholder Name:</label>
+			<input type="text" id="cardholderName" name="cardholderName" placeholder="Enter cardholder name">
+
+			<button type="submit">Submit Payment</button>
+		</form>
+	</div>
+
+	<div class="form-container">
+		<h2>Account Creation</h2>
+		<form>
+			<label for="username">Username:</label>
+			<input type="text" id="username" name="username" placeholder="Enter username">
+
+			<label for="password">Password:</label>
+			<input type="password" id="password" name="password" placeholder="Enter password">
+
+			<label for="confirmPassword">Confirm Password:</label>
+			<input type="password" id="confirmPassword" name="confirmPassword" placeholder="Confirm password">
+
+			<label for="website">Website:</label>
+			<input type="url" id="website" name="website" placeholder="Enter your website URL">
+
+			<label for="bio">Bio:</label>
+			<textarea id="bio" name="bio" rows="4" placeholder="Tell us about yourself"></textarea>
+
+			<button type="submit">Create Account</button>
+		</form>
+	</div>
+
+	<div class="form-container">
+		<h2>Company Information</h2>
+		<form>
+			<label for="companyName">Company Name:</label>
+			<input type="text" id="companyName" name="companyName" placeholder="Enter company name">
+
+			<label for="jobTitle">Job Title:</label>
+			<input type="text" id="jobTitle" name="jobTitle" placeholder="Enter job title">
+
+			<label for="department">Department:</label>
+			<select id="department" name="department">
+				<option value="">Select department</option>
+				<option value="engineering">Engineering</option>
+				<option value="marketing">Marketing</option>
+				<option value="sales">Sales</option>
+				<option value="hr">Human Resources</option>
+				<option value="finance">Finance</option>
+				<option value="operations">Operations</option>
+			</select>
+
+			<label for="workPhone">Work Phone:</label>
+			<input type="tel" id="workPhone" name="workPhone" placeholder="Enter work phone number">
+
+			<button type="submit">Submit Company Info</button>
+		</form>
+	</div>
+
+	<script>
+		// Prevent actual form submission for testing
+		document.querySelectorAll('form').forEach(form => {
+			form.addEventListener('submit', (e) => {
+				e.preventDefault();
+				alert('Form submission prevented for demo purposes');
+			});
+		});
+	</script>
+</body>
+
+</html>

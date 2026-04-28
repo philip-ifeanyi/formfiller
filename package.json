@@ -1,0 +1,22 @@
+{
+  "name": "formfilla",
+  "version": "1.1.0",
+  "description": "Auto-fill forms with test data profiles for developers and testers",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "type-check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "webextension-polyfill": "^0.12.0"
+  },
+  "devDependencies": {
+    "@crxjs/vite-plugin": "^2.0.0-beta.23",
+    "@types/chrome": "^0.0.268",
+    "@types/webextension-polyfill": "^0.10.7",
+    "typescript": "^5.3.3",
+    "vite": "^5.0.10"
+  }
+}

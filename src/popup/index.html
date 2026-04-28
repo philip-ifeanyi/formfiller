@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>FormFilla</title>
+	<style>
+		body {
+			width: 320px;
+			min-height: 400px;
+			margin: 0;
+			padding: 16px;
+			font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+			font-size: 14px;
+			background: #f8f9fa;
+		}
+
+		.header {
+			display: flex;
+			align-items: center;
+			margin-bottom: 16px;
+			padding-bottom: 12px;
+			border-bottom: 1px solid #e1e4e8;
+		}
+
+		.logo {
+			width: 24px;
+			height: 24px;
+			margin-right: 8px;
+			background: #4285f4;
+			border-radius: 4px;
+			display: flex;
+			align-items: center;
+			justify-content: center;
+			color: white;
+			font-weight: bold;
+		}
+
+		h1 {
+			margin: 0;
+			font-size: 18px;
+			font-weight: 600;
+			color: #24292e;
+		}
+
+		.quick-actions {
+			margin-bottom: 16px;
+		}
+
+		.quick-actions h2 {
+			margin: 0 0 8px 0;
+			font-size: 14px;
+			font-weight: 600;
+			color: #586069;
+			text-transform: uppercase;
+			letter-spacing: 0.5px;
+		}
+
+		.action-grid {
+			display: grid;
+			grid-template-columns: 1fr 1fr;
+			gap: 8px;
+		}
+
+		.action-btn {
+			padding: 12px;
+			border: 1px solid #d1d5da;
+			border-radius: 6px;
+			background: white;
+			cursor: pointer;
+			text-align: center;
+			transition: all 0.2s ease;
+			text-decoration: none;
+			color: #24292e;
+			font-size: 12px;
+		}
+
+		.action-btn:hover {
+			background: #f6f8fa;
+			border-color: #4285f4;
+			transform: translateY(-1px);
+		}
+
+		.profiles-section {
+			margin-bottom: 16px;
+		}
+
+		.profile-item {
+			display: flex;
+			align-items: center;
+			justify-content: space-between;
+			padding: 8px 12px;
+			margin-bottom: 4px;
+			background: white;
+			border: 1px solid #d1d5da;
+			border-radius: 6px;
+			cursor: pointer;
+			transition: all 0.2s ease;
+		}
+
+		.profile-item:hover {
+			background: #f6f8fa;
+			border-color: #4285f4;
+		}
+
+		.profile-item.default {
+			border-color: #4CAF50;
+			background: #f8fff8;
+		}
+
+		.profile-name {
+			font-weight: 500;
+			flex: 1;
+		}
+
+		.profile-badge {
+			background: #4CAF50;
+			color: white;
+			padding: 2px 6px;
+			border-radius: 10px;
+			font-size: 10px;
+			font-weight: 500;
+		}
+
+		.empty-state {
+			text-align: center;
+			padding: 24px;
+			background: white;
+			border: 1px solid #d1d5da;
+			border-radius: 6px;
+			color: #586069;
+		}
+
+		.dummy-profiles {
+			margin-top: 16px;
+		}
+
+		.dummy-profile {
+			display: flex;
+			align-items: center;
+			justify-content: space-between;
+			padding: 8px 12px;
+			margin-bottom: 4px;
+			background: #fff8e1;
+			border: 1px solid #ffc107;
+			border-radius: 6px;
+			cursor: pointer;
+			transition: all 0.2s ease;
+		}
+
+		.dummy-profile:hover {
+			background: #fff3c4;
+		}
+
+		.create-btn {
+			width: 100%;
+			padding: 12px;
+			background: #4285f4;
+			color: white;
+			border: none;
+			border-radius: 6px;
+			font-size: 14px;
+			font-weight: 500;
+			cursor: pointer;
+			transition: background 0.2s ease;
+			margin-top: 12px;
+		}
+
+		.create-btn:hover {
+			background: #3367d6;
+		}
+
+		.footer {
+			text-align: center;
+			margin-top: 16px;
+			padding-top: 12px;
+			border-top: 1px solid #e1e4e8;
+			color: #586069;
+			font-size: 12px;
+		}
+
+		.footer a {
+			color: #4285f4;
+			text-decoration: none;
+		}
+
+		.footer a:hover {
+			text-decoration: underline;
+		}
+	</style>
+</head>
+
+<body>
+	<div class="header">
+		<div class="logo">F</div>
+		<h1>FormFilla</h1>
+	</div>
+
+	<div class="warning-banner"
+		style="background: #fff3cd; border: 1px solid #ffeaa7; border-radius: 4px; padding: 8px; margin-bottom: 16px; font-size: 12px; color: #856404;">
+		⚠️ <strong>Test Data Only:</strong> This extension should only be used with test data. Never use real personal or
+		financial information.
+	</div>
+
+	<div class="quick-actions">
+		<h2>Quick Actions</h2>
+		<div class="action-grid">
+			<button class="action-btn" id="fill-page">
+				🔧 Fill Page Forms
+			</button>
+			<button class="action-btn" id="random-data">
+				🎲 Random Data
+			</button>
+		</div>
+	</div>
+
+	<div class="profiles-section">
+		<h2>Profiles</h2>
+		<div id="profiles-list"></div>
+		<button class="create-btn" id="create-profile">+ Create New Profile</button>
+	</div>
+
+	<div class="dummy-profiles" id="dummy-profiles">
+		<h2>Sample Data</h2>
+	</div>
+
+	<div class="footer">
+		<a href="#" id="settings-link">Settings</a> •
+		<a href="#" id="help-link">Help</a>
+	</div>
+
+	<script type="module" src="./index.ts"></script>
+</body>
+
+</html>
