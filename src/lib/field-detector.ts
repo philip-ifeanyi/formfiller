@@ -1,8 +1,13 @@
 import {
+	type CanonicalFieldKey,
 	type FieldEvidence,
 	type FieldEvidenceSource,
 	type FieldCandidate,
 	type FieldControlKind,
+	type FieldInference,
+	type FieldInferenceAlternative,
+	type FieldInferenceStatus,
+	type FieldRegistryEntry,
 	FieldInfo,
 	FieldPattern,
 	type FormControlElement,
@@ -12,6 +17,23 @@ import {
 
 const CONTROL_SELECTOR = 'input, select, textarea'
 const SECTION_SELECTOR = 'fieldset, section, article, [role="group"], [data-form-section]'
+const FIELD_INFERENCE_LIMITS = {
+	highConfidence: 0.72,
+	review: 0.45,
+	ambiguityDelta: 0.12,
+	alternative: 0.2
+} as const
+const CLASSIFIER_WEIGHTS = {
+	selector: 0.28,
+	pattern: 0.3,
+	patternCoverage: 0.08,
+	autocomplete: 0.2,
+	controlKindBonus: 0.08,
+	positiveTokenBonus: 0.08,
+	negativeTokenPenalty: 0.12,
+	controlKindPenalty: 0.18
+} as const
+const MAX_INFERENCE_ALTERNATIVES = 3
 const EVIDENCE_WEIGHT_BY_SOURCE: Record<FieldEvidenceSource, number> = {
 	label: 1,
 	placeholder: 0.6,
@@ -30,8 +52,102 @@ const EVIDENCE_WEIGHT_BY_SOURCE: Record<FieldEvidenceSource, number> = {
 	'input-type': 0.8,
 	role: 0.4
 }
+const LEGACY_TO_CANONICAL_FIELD_KEY: Record<string, CanonicalFieldKey> = {
+	'personal.firstName': 'person.firstName',
+	'personal.lastName': 'person.lastName',
+	'personal.fullName': 'person.fullName',
+	'personal.email': 'contact.email.primary',
+	'personal.phone': 'contact.phone.primary',
+	'personal.dateOfBirth': 'person.dateOfBirth',
+	'personal.age': 'person.age',
+	'personal.gender': 'person.gender',
+	'personal.ssn': 'identity.ssn',
+	'personal.bio': 'person.bio',
+	'address.street': 'address.line1',
+	'address.street2': 'address.line2',
+	'address.city': 'address.city',
+	'address.state': 'address.stateOrProvince',
+	'address.zip': 'address.postalCode',
+	'address.country': 'address.country',
+	'company.name': 'company.name',
+	'company.title': 'company.title',
+	'company.department': 'company.department',
+	'company.website': 'company.website',
+	'payment.cardNumber': 'payment.cardNumber',
+	'payment.expiry': 'payment.expiry',
+	'payment.cvv': 'payment.cvv',
+	'payment.cardholderName': 'payment.cardholderName',
+	'account.username': 'account.username',
+	'account.password': 'account.password',
+	'account.confirmPassword': 'account.confirmPassword'
+}
+const SUPPORTED_CONTROL_KINDS_BY_LEGACY: Partial<Record<string, FieldControlKind[]>> = {
+	'personal.firstName': ['text'],
+	'personal.lastName': ['text'],
+	'personal.fullName': ['text'],
+	'personal.email': ['email', 'text'],
+	'personal.phone': ['tel', 'text'],
+	'personal.dateOfBirth': ['date', 'datetime', 'text'],
+	'personal.age': ['number', 'text'],
+	'personal.gender': ['select', 'radio', 'text'],
+	'personal.ssn': ['text', 'number', 'password'],
+	'personal.bio': ['textarea', 'text'],
+	'address.street': ['text', 'textarea'],
+	'address.street2': ['text', 'textarea'],
+	'address.city': ['text'],
+	'address.state': ['text', 'select'],
+	'address.zip': ['text', 'number'],
+	'address.country': ['select', 'text'],
+	'company.name': ['text'],
+	'company.title': ['text'],
+	'company.department': ['text', 'select'],
+	'company.website': ['text'],
+	'payment.cardNumber': ['text', 'number'],
+	'payment.expiry': ['text', 'date', 'datetime'],
+	'payment.cvv': ['text', 'number', 'password'],
+	'payment.cardholderName': ['text'],
+	'account.username': ['text'],
+	'account.password': ['password'],
+	'account.confirmPassword': ['password']
+}
+const POSITIVE_TOKENS_BY_LEGACY: Partial<Record<string, string[]>> = {
+	'personal.firstName': ['first name', 'given name'],
+	'personal.lastName': ['last name', 'family name', 'surname'],
+	'personal.fullName': ['full name', 'complete name'],
+	'personal.email': ['email', 'e mail'],
+	'personal.phone': ['phone', 'telephone', 'mobile'],
+	'personal.dateOfBirth': ['date of birth', 'birth date', 'dob'],
+	'personal.gender': ['gender', 'sex'],
+	'personal.ssn': ['ssn', 'social security'],
+	'address.street2': ['address line 2', 'line 2', 'apt', 'suite', 'unit', 'apartment'],
+	'address.zip': ['zip', 'postal code', 'postcode'],
+	'payment.cardNumber': ['card number', 'credit card', 'cc number'],
+	'payment.expiry': ['expiry', 'expiration', 'valid thru'],
+	'payment.cvv': ['cvv', 'cvc', 'security code'],
+	'payment.cardholderName': ['cardholder', 'name on card'],
+	'account.username': ['username', 'login'],
+	'account.confirmPassword': ['confirm password', 'repeat password']
+}
+const NEGATIVE_TOKENS_BY_LEGACY: Partial<Record<string, string[]>> = {
+	'personal.firstName': ['last name', 'surname', 'family name'],
+	'personal.lastName': ['first name', 'given name'],
+	'personal.fullName': ['first name', 'last name', 'given name', 'family name'],
+	'address.street': ['address line 2', 'line 2', 'apt', 'suite', 'unit', 'apartment'],
+	'payment.expiry': ['cvv', 'security code'],
+	'payment.cvv': ['expiry', 'expiration', 'valid thru'],
+	'account.password': ['confirm', 'repeat'],
+	'account.confirmPassword': ['current password']
+}
 
 type SearchRoot = Document | ShadowRoot | HTMLElement
+type HeuristicClassifierTarget = {
+	entry: FieldRegistryEntry
+	pattern: FieldPattern
+}
+type HeuristicEvaluation = FieldInferenceAlternative & {
+	legacyType?: string
+	legacySubtype?: string
+}
 
 export class FieldDetector {
 	private patterns: Record<string, Record<string, FieldPattern>> = {
@@ -198,6 +314,8 @@ export class FieldDetector {
 		}
 	}
 
+	private classifierTargets: HeuristicClassifierTarget[] = this.buildClassifierTargets()
+
 	collectFormSnapshots(root: SearchRoot = document): FormSnapshot[] {
 		const searchRoots = this.getSearchRoots(root)
 		const forms = this.collectForms(searchRoots)
@@ -210,6 +328,10 @@ export class FieldDetector {
 	}
 
 	detectField(element: FormControlElement): FieldInfo | null {
+		return this.toFieldInfoFromElement(element)
+	}
+
+	inferField(element: FormControlElement): FieldInference {
 		const ownerForm = element.form || element.closest('form')
 		const formId = ownerForm ? this.getFormIdentifier(ownerForm) : `detached:${this.buildDomSignature(element)}`
 		const sectionElement = ownerForm
@@ -221,32 +343,87 @@ export class FieldDetector {
 		const sectionTitle = ownerForm ? this.getSectionTitle(sectionElement, ownerForm) : undefined
 		const candidate = this.createFieldCandidate(element, formId, sectionId, sectionElement, sectionTitle)
 
-		return this.detectFieldCandidate(candidate)
+		return this.inferFieldCandidate(candidate)
 	}
 
 	detectFieldCandidate(candidate: FieldCandidate): FieldInfo | null {
-		const fieldInfo: FieldInfo = {
-			element: candidate.element,
-			type: '',
-			subtype: '',
-			confidence: 0,
-			suggestions: []
-		}
+		return this.toFieldInfo(candidate, this.inferFieldCandidate(candidate))
+	}
 
-		// Check each category and field type
-		for (const [category, fields] of Object.entries(this.patterns)) {
-			for (const [fieldType, config] of Object.entries(fields)) {
-				const confidence = this.calculateConfidence(candidate, config)
+	inferFieldCandidate(candidate: FieldCandidate): FieldInference {
+		const structuralSkipReasons = this.getStructuralSkipReasons(candidate)
+		const evaluations = this.classifierTargets
+			.map(target => this.evaluateCandidateAgainstTarget(candidate, target))
+			.filter(evaluation => evaluation.confidence > 0)
+			.sort((left, right) => right.confidence - left.confidence)
 
-				if (confidence > fieldInfo.confidence) {
-					fieldInfo.type = category
-					fieldInfo.subtype = fieldType
-					fieldInfo.confidence = confidence
-				}
+		const bestMatch = evaluations[0]
+		const alternatives = evaluations
+			.slice(1)
+			.filter(alternative => alternative.confidence >= FIELD_INFERENCE_LIMITS.alternative)
+			.slice(0, MAX_INFERENCE_ALTERNATIVES)
+			.map(alternative => ({
+				fieldKey: alternative.fieldKey,
+				confidence: alternative.confidence,
+				reasons: alternative.reasons
+			}))
+
+		if (!bestMatch) {
+			return {
+				fieldKey: null,
+				confidence: 0,
+				status: 'skip',
+				reasons: this.uniqueReasons([
+					...structuralSkipReasons,
+					candidate.evidence.length === 0
+						? 'skipped because no structured field evidence was extracted'
+						: 'skipped because no heuristic rule matched the extracted evidence'
+				]),
+				alternatives: []
 			}
 		}
 
-		return fieldInfo.confidence > 0.5 ? fieldInfo : null
+		const runnerUp = evaluations[1]
+		const ambiguous = Boolean(
+			runnerUp && bestMatch.confidence - runnerUp.confidence < FIELD_INFERENCE_LIMITS.ambiguityDelta
+		)
+		let status: FieldInferenceStatus
+		const reasons = [...bestMatch.reasons]
+
+		if (structuralSkipReasons.length > 0) {
+			status = 'skip'
+			reasons.push(...structuralSkipReasons)
+		} else if (bestMatch.confidence >= FIELD_INFERENCE_LIMITS.highConfidence && !ambiguous) {
+			status = 'high-confidence'
+			reasons.push(`classified as high-confidence at ${bestMatch.confidence.toFixed(2)}`)
+		} else if (bestMatch.confidence >= FIELD_INFERENCE_LIMITS.review) {
+			status = 'review'
+			reasons.push(`classified for review at ${bestMatch.confidence.toFixed(2)}`)
+		} else {
+			status = 'skip'
+			reasons.push(`skipped because best heuristic score ${bestMatch.confidence.toFixed(2)} is below the review threshold`)
+		}
+
+		if (ambiguous && runnerUp) {
+			reasons.push(
+				`ambiguous with ${runnerUp.fieldKey} at ${runnerUp.confidence.toFixed(2)}`
+			)
+			if (status === 'high-confidence') {
+				status = 'review'
+			}
+		}
+
+		const keepFieldKey = bestMatch.confidence >= FIELD_INFERENCE_LIMITS.review
+
+		return {
+			fieldKey: keepFieldKey ? bestMatch.fieldKey : null,
+			legacyType: keepFieldKey ? bestMatch.legacyType : undefined,
+			legacySubtype: keepFieldKey ? bestMatch.legacySubtype : undefined,
+			confidence: bestMatch.confidence,
+			status,
+			reasons: this.uniqueReasons(reasons),
+			alternatives
+		}
 	}
 
 	detectFields(form: HTMLFormElement): Map<HTMLElement, FieldInfo> {
@@ -264,6 +441,51 @@ export class FieldDetector {
 		})
 
 		return fieldMap
+	}
+
+	private toFieldInfoFromElement(element: FormControlElement): FieldInfo | null {
+		return this.toFieldInfo(element, this.inferField(element))
+	}
+
+	private toFieldInfo(candidateOrElement: FieldCandidate | FormControlElement, inference: FieldInference): FieldInfo | null {
+		if (inference.status !== 'high-confidence' || !inference.legacyType || !inference.legacySubtype) {
+			return null
+		}
+
+		const element = 'element' in candidateOrElement ? candidateOrElement.element : candidateOrElement
+
+		return {
+			element,
+			type: inference.legacyType,
+			subtype: inference.legacySubtype,
+			confidence: inference.confidence,
+			suggestions: inference.alternatives.map(alternative => alternative.fieldKey)
+		}
+	}
+
+	private buildClassifierTargets(): HeuristicClassifierTarget[] {
+		return Object.entries(this.patterns).flatMap(([legacyType, fields]) => {
+			return Object.entries(fields).map(([legacySubtype, pattern]) => {
+				const legacyKey = `${legacyType}.${legacySubtype}`
+				const derivedTokens = this.tokenizeEvidenceText(legacySubtype)
+
+				return {
+					entry: {
+						key: LEGACY_TO_CANONICAL_FIELD_KEY[legacyKey] || `${legacyType}.${legacySubtype}` as CanonicalFieldKey,
+						legacyType,
+						legacySubtype,
+						positiveTokens: this.uniqueReasons([
+							...(POSITIVE_TOKENS_BY_LEGACY[legacyKey] || []),
+							...derivedTokens
+						]),
+						negativeTokens: NEGATIVE_TOKENS_BY_LEGACY[legacyKey] || [],
+						supportedControlKinds: SUPPORTED_CONTROL_KINDS_BY_LEGACY[legacyKey],
+						validation: pattern.validation
+					},
+					pattern
+				}
+			})
+		})
 	}
 
 	private createFormSnapshot(form: HTMLFormElement, searchRoots: SearchRoot[]): FormSnapshot {
@@ -447,44 +669,116 @@ export class FieldDetector {
 		})
 	}
 
-	private calculateConfidence(
+	private evaluateCandidateAgainstTarget(
 		candidate: FieldCandidate,
-		config: FieldPattern
-	): number {
+		target: HeuristicClassifierTarget
+	): HeuristicEvaluation {
 		let confidence = 0
-		const weights = { selector: 0.4, pattern: 0.3, autocomplete: 0.2, type: 0.1 }
+		const reasons: string[] = []
+		const evidenceText = this.buildEvidenceSearchText(candidate.evidence)
+		const selectorMatches = target.pattern.selectors.filter(selector => candidate.element.matches(selector))
 
-		// Check selectors
-		if (config.selectors?.some(sel => candidate.element.matches(sel))) {
-			confidence += weights.selector
+		if (selectorMatches.length > 0) {
+			confidence += CLASSIFIER_WEIGHTS.selector
+			reasons.push(`matched selector ${selectorMatches[0]}`)
 		}
 
-		const textToCheck = this.buildEvidenceSearchText(candidate.evidence)
+		const matchedEvidence = this.getMatchedEvidence(candidate.evidence, target.pattern.patterns)
+		if (matchedEvidence.length > 0) {
+			const strongestEvidenceWeight = Math.max(...matchedEvidence.map(match => match.weight || 0.4))
+			const uniqueSources = new Set(matchedEvidence.map(match => match.source))
 
-		if (config.patterns?.some(pattern => pattern.test(textToCheck))) {
-			confidence += weights.pattern
+			confidence += strongestEvidenceWeight * CLASSIFIER_WEIGHTS.pattern
+			confidence += Math.min(
+				CLASSIFIER_WEIGHTS.patternCoverage,
+				(uniqueSources.size - 1) * 0.04
+			)
+			reasons.push(`matched ${Array.from(uniqueSources).join(', ')} evidence`)
 		}
 
-		// Check autocomplete attribute
-		const autocomplete = candidate.autocomplete || ''
-		if (config.autocomplete?.includes(autocomplete)) {
-			confidence += weights.autocomplete
+		if (candidate.autocomplete && target.pattern.autocomplete.includes(candidate.autocomplete)) {
+			confidence += CLASSIFIER_WEIGHTS.autocomplete
+			reasons.push(`matched autocomplete ${candidate.autocomplete}`)
 		}
 
-		// Check input type for specific matches
-		if (candidate.element instanceof HTMLInputElement) {
-			if (candidate.element.type === 'email' && config.autocomplete?.includes('email')) {
-				confidence += weights.type
+		const positiveTokens = (target.entry.positiveTokens || []).filter(token => {
+			return evidenceText.includes(this.normalizeEvidenceText(token))
+		})
+		if (positiveTokens.length > 0) {
+			confidence += Math.min(
+				CLASSIFIER_WEIGHTS.positiveTokenBonus,
+				positiveTokens.length * 0.03
+			)
+			reasons.push(`matched tokens ${positiveTokens.slice(0, 3).join(', ')}`)
+		}
+
+		const negativeTokens = (target.entry.negativeTokens || []).filter(token => {
+			return evidenceText.includes(this.normalizeEvidenceText(token))
+		})
+		if (negativeTokens.length > 0) {
+			confidence -= Math.min(
+				CLASSIFIER_WEIGHTS.negativeTokenPenalty,
+				negativeTokens.length * 0.06
+			)
+			reasons.push(`penalized by conflicting tokens ${negativeTokens.slice(0, 3).join(', ')}`)
+		}
+
+		const supportedControlKinds = target.entry.supportedControlKinds || []
+		if (supportedControlKinds.length > 0) {
+			if (supportedControlKinds.includes(candidate.controlKind)) {
+				confidence += CLASSIFIER_WEIGHTS.controlKindBonus
+				reasons.push(`control kind ${candidate.controlKind} is supported`)
+			} else {
+				confidence -= CLASSIFIER_WEIGHTS.controlKindPenalty
+				reasons.push(`control kind ${candidate.controlKind} is atypical for ${target.entry.key}`)
 			}
-			if (candidate.element.type === 'tel' && config.autocomplete?.includes('tel')) {
-				confidence += weights.type
-			}
-			if (candidate.element.type === 'password' && config.patterns?.some(p => /password/i.test(p.source))) {
-				confidence += weights.type
-			}
 		}
 
-		return confidence
+		return {
+			fieldKey: target.entry.key,
+			legacyType: target.entry.legacyType,
+			legacySubtype: target.entry.legacySubtype,
+			confidence: Math.max(0, Math.min(1, confidence)),
+			reasons: this.uniqueReasons(reasons)
+		}
+	}
+
+	private getMatchedEvidence(evidence: FieldEvidence[], patterns: RegExp[]): FieldEvidence[] {
+		const matches = new Map<string, FieldEvidence>()
+
+		evidence.forEach(entry => {
+			const entryText = this.buildEvidenceSearchText([entry])
+			if (!entryText) return
+
+			if (patterns.some(pattern => pattern.test(entryText))) {
+				const key = `${entry.source}:${entry.normalized || entry.raw.toLowerCase()}`
+				matches.set(key, entry)
+			}
+		})
+
+		return Array.from(matches.values())
+	}
+
+	private getStructuralSkipReasons(candidate: FieldCandidate): string[] {
+		const reasons: string[] = []
+
+		if (candidate.controlKind === 'hidden' || candidate.visibility === 'hidden') {
+			reasons.push('skipped because the field is hidden')
+		}
+
+		if (candidate.isDisabled) {
+			reasons.push('skipped because the field is disabled')
+		}
+
+		if (candidate.isReadonly) {
+			reasons.push('skipped because the field is read-only')
+		}
+
+		return reasons
+	}
+
+	private uniqueReasons(reasons: string[]): string[] {
+		return Array.from(new Set(reasons.filter(Boolean)))
 	}
 
 	private extractFieldEvidence(input: {
