@@ -259,6 +259,113 @@ export interface FillResult {
 	message?: string
 }
 
+export type LegacyFieldPath = `${string}.${string}`
+
+export interface RuntimeSuccessResponse {
+	success: true
+}
+
+export interface RuntimeErrorResponse {
+	error: string
+}
+
+export const BACKGROUND_REQUEST_TYPES = [
+	'updateContextMenu',
+	'getFieldValue',
+	'getDefaultProfileData',
+	'getSettings',
+	'refreshContextMenu'
+] as const
+
+export interface UpdateContextMenuRequestMessage {
+	type: 'updateContextMenu'
+	fieldType: LegacyFieldPath
+	fieldDisplayName: string
+}
+
+export interface GetFieldValueRequestMessage {
+	type: 'getFieldValue'
+	fieldType: string
+	subtype: string
+}
+
+export interface GetDefaultProfileDataRequestMessage {
+	type: 'getDefaultProfileData'
+}
+
+export interface GetSettingsRequestMessage {
+	type: 'getSettings'
+}
+
+export interface RefreshContextMenuRequestMessage {
+	type: 'refreshContextMenu'
+}
+
+export type BackgroundRequestMessage =
+	| UpdateContextMenuRequestMessage
+	| GetFieldValueRequestMessage
+	| GetDefaultProfileDataRequestMessage
+	| GetSettingsRequestMessage
+	| RefreshContextMenuRequestMessage
+
+export interface GetFieldValueResponseMessage {
+	value: string
+}
+
+export interface GetDefaultProfileDataResponseMessage {
+	profileData: ProfileData
+}
+
+export interface GetSettingsResponseMessage {
+	settings: ExtensionSettings
+}
+
+export type BackgroundResponseMessage =
+	| RuntimeSuccessResponse
+	| RuntimeErrorResponse
+	| GetFieldValueResponseMessage
+	| GetDefaultProfileDataResponseMessage
+	| GetSettingsResponseMessage
+
+export const CONTENT_COMMAND_TYPES = [
+	'fillForm',
+	'fillField',
+	'getFormFields',
+	'highlightField'
+] as const
+
+export interface FillFormCommandMessage {
+	type: 'fillForm'
+	profileData?: ProfileData
+}
+
+export interface FillFieldCommandMessage {
+	type: 'fillField'
+	value: string
+}
+
+export interface GetFormFieldsCommandMessage {
+	type: 'getFormFields'
+}
+
+export interface HighlightFieldCommandMessage {
+	type: 'highlightField'
+	fieldSelector?: string
+}
+
+export type ContentCommandMessage =
+	| FillFormCommandMessage
+	| FillFieldCommandMessage
+	| GetFormFieldsCommandMessage
+	| HighlightFieldCommandMessage
+
+export interface GetFormFieldsResponseMessage {
+	formCount: number
+	fieldCount: number
+}
+
+export type ContentResponseMessage = RuntimeSuccessResponse | RuntimeErrorResponse | GetFormFieldsResponseMessage
+
 /**
  * @deprecated Use ProfileDefinition for new work.
  */

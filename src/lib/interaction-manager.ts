@@ -1,10 +1,22 @@
-import { FieldInfo, StorageData } from '@/types'
+import {
+	type BackgroundResponseMessage,
+	type ContentCommandMessage,
+	type ExtensionSettings,
+	type FieldInfo,
+	type GetFieldValueRequestMessage,
+	type ProfileData,
+	type UpdateContextMenuRequestMessage
+} from '@/types'
 import { FieldDetector } from './field-detector'
 import { StorageService } from './storage'
 import { sanitizeFieldValue } from './security'
 
+function isFieldValueResponse(response: BackgroundResponseMessage | undefined): response is { value: string } {
+	return Boolean(response && 'value' in response)
+}
+
 export class InteractionManager {
-	private userPreferences: StorageData['settings']
+	private userPreferences: ExtensionSettings
 	private activeButtons = new Map<HTMLElement, HTMLElement>()
 	private fieldDetector: FieldDetector
 	private storage: StorageService
@@ -200,17 +212,18 @@ export class InteractionManager {
 			this.lastClickedElement = element
 			// Send message to background script to update context menu
 			if (fieldInfo) {
-				chrome.runtime.sendMessage({
+				const message: UpdateContextMenuRequestMessage = {
 					type: 'updateContextMenu',
 					fieldType: `${fieldInfo.type}.${fieldInfo.subtype}`,
 					fieldDisplayName: this.fieldDetector.getFieldTypeDisplayName(fieldInfo.type, fieldInfo.subtype)
-				})
+				}
+				chrome.runtime.sendMessage(message)
 			}
 		})
 	}
 
 	// Handle messages from background script
-	handleMessage(message: any): void {
+	handleMessage(message: ContentCommandMessage): void {
 		switch (message.type) {
 			case 'fillField':
 				if (this.lastClickedElement && this.isFormField(this.lastClickedElement)) {
@@ -219,25 +232,32 @@ export class InteractionManager {
 				break
 
 			case 'fillForm':
-				this.fillEntireForm(message.profileData)
+				if (message.profileData) {
+					void this.fillEntireForm(message.profileData)
+				}
+				break
+
+			default:
 				break
 		}
 	}
 
 	private async fillFieldDefault(element: HTMLElement, fieldInfo: FieldInfo): Promise<void> {
 		// Send message to background script to get default value
-		chrome.runtime.sendMessage({
+		const message: GetFieldValueRequestMessage = {
 			type: 'getFieldValue',
 			fieldType: fieldInfo.type,
 			subtype: fieldInfo.subtype
-		}, (response) => {
-			if (response && response.value) {
+		}
+
+		chrome.runtime.sendMessage(message, (response: BackgroundResponseMessage | undefined) => {
+			if (isFieldValueResponse(response)) {
 				this.setFieldValue(element, response.value)
 			}
 		})
 	}
 
-	private async fillEntireForm(profileData: any): Promise<void> {
+	private async fillEntireForm(profileData: ProfileData): Promise<void> {
 		const forms = document.querySelectorAll('form')
 
 		for (const form of forms) {
@@ -253,18 +273,25 @@ export class InteractionManager {
 		}
 	}
 
-	private getValueFromProfile(profileData: any, type: string, subtype: string): string {
+	private getValueFromProfile(profileData: ProfileData, type: string, subtype: string): string {
 		// Special handling for bio field which is stored in custom data
 		if (type === 'personal' && subtype === 'bio') {
 			return profileData.custom?.bio || ''
 		}
 
 		const path = `${type}.${subtype}`
-		return this.getNestedValue(profileData, path) || ''
+		const value = this.getNestedValue(profileData, path)
+		return typeof value === 'string' ? value : ''
 	}
 
-	private getNestedValue(obj: any, path: string): any {
-		return path.split('.').reduce((o, p) => o?.[p], obj)
+	private getNestedValue(obj: unknown, path: string): unknown {
+		return path.split('.').reduce<unknown>((current, segment) => {
+			if (!current || typeof current !== 'object' || Array.isArray(current)) {
+				return undefined
+			}
+
+			return (current as Record<string, unknown>)[segment]
+		}, obj)
 	}
 
 	private async setFieldValue(element: HTMLElement, value: string): Promise<void> {
@@ -323,7 +350,7 @@ export class InteractionManager {
 	}
 
 	// User preference management
-	async updatePreferences(newPreferences: Partial<StorageData['settings']>): Promise<void> {
+	async updatePreferences(newPreferences: Partial<ExtensionSettings>): Promise<void> {
 		this.userPreferences = { ...this.userPreferences, ...newPreferences }
 		await this.storage.saveSettings(this.userPreferences)
 

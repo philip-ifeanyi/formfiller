@@ -1,7 +1,41 @@
 import { FieldDetector } from '../lib/field-detector'
 import { InteractionManager } from '../lib/interaction-manager'
-import { FieldInfo } from '../types'
+import {
+	BACKGROUND_REQUEST_TYPES,
+	CONTENT_COMMAND_TYPES,
+	type BackgroundRequestMessage,
+	type BackgroundResponseMessage,
+	type ContentCommandMessage,
+	type ContentResponseMessage,
+	type ExtensionSettings,
+	type FieldInfo,
+	type ProfileData
+} from '../types'
 import { validateMessage } from '../lib/security'
+
+const DEFAULT_CONTENT_SETTINGS: ExtensionSettings = {
+	autoFillEnabled: true,
+	defaultProfile: '',
+	fillDelay: 50,
+	highlightFields: true,
+	showButtons: true,
+	buttonPosition: 'inside-right',
+	contextMenuEnabled: true,
+	autoHideButtons: true,
+	buttonStyle: 'minimal'
+}
+
+function isProfileDataResponse(response: BackgroundResponseMessage | null): response is { profileData: ProfileData } {
+	return Boolean(response && 'profileData' in response)
+}
+
+function isSettingsResponse(response: BackgroundResponseMessage | null): response is { settings: ExtensionSettings } {
+	return Boolean(response && 'settings' in response)
+}
+
+function isErrorResponse(response: BackgroundResponseMessage | null): response is { error: string } {
+	return Boolean(response && 'error' in response)
+}
 
 export class FormFillaContent {
 	private fieldDetector: FieldDetector
@@ -31,10 +65,9 @@ export class FormFillaContent {
 		})
 	}
 
-	private handleMessage(message: any, sender: chrome.runtime.MessageSender, sendResponse: (response?: any) => void): void {
+	private handleMessage(message: unknown, sender: chrome.runtime.MessageSender, sendResponse: (response?: ContentResponseMessage) => void): void {
 		// Validate message structure and source
-		const expectedTypes = ['fillForm', 'getFormFields', 'highlightField']
-		const validation = validateMessage(message, expectedTypes)
+		const validation = validateMessage(message, CONTENT_COMMAND_TYPES)
 
 		if (!validation.isValid) {
 			console.warn('FormFilla: Invalid message received:', validation.error)
@@ -49,11 +82,18 @@ export class FormFillaContent {
 			return
 		}
 
+		const typedMessage = message as ContentCommandMessage
+
 		try {
-			switch (message.type) {
+			switch (typedMessage.type) {
+				case 'fillField':
+					this.interactionManager.handleMessage(typedMessage)
+					sendResponse({ success: true })
+					break
+
 				case 'fillForm':
-					if (message.profileData) {
-						this.handleFormFillRequest(message.profileData)
+					if (typedMessage.profileData) {
+						this.handleFormFillRequest(typedMessage.profileData)
 						sendResponse({ success: true })
 					} else {
 						this.fillAllFormsOnPage()
@@ -83,7 +123,7 @@ export class FormFillaContent {
 		}
 	}
 
-	private handleFormFillRequest(profileData: any): void {
+	private handleFormFillRequest(profileData: ProfileData): void {
 		const forms = document.querySelectorAll('form')
 		forms.forEach(form => {
 			const fields = this.fieldDetector.detectFields(form)
@@ -264,7 +304,7 @@ export class FormFillaContent {
 		}
 	}
 
-	private async sendMessageSafely(message: any, timeout: number = 5000): Promise<any> {
+	private async sendMessageSafely<TResponse extends BackgroundResponseMessage>(message: BackgroundRequestMessage, timeout: number = 5000): Promise<TResponse | null> {
 		return new Promise((resolve) => {
 			if (!this.isExtensionContextValid()) {
 				console.warn('FormFilla: Extension context invalidated, cannot send message')
@@ -274,7 +314,7 @@ export class FormFillaContent {
 
 			const timeoutId = setTimeout(() => {
 				console.warn('FormFilla: Message timeout after', timeout, 'ms')
-				resolve(null) // Resolve with null instead of rejecting to maintain consistency
+				resolve(null)
 			}, timeout)
 
 			try {
@@ -291,7 +331,7 @@ export class FormFillaContent {
 						return
 					}
 
-					resolve(response)
+					resolve((response ?? null) as TResponse | null)
 				})
 			} catch (error) {
 				clearTimeout(timeoutId)
@@ -311,6 +351,11 @@ export class FormFillaContent {
 			while (retryCount < maxRetries && !response) {
 				response = await this.sendMessageSafely({ type: 'getDefaultProfileData' })
 
+				if (isErrorResponse(response)) {
+					console.warn('FormFilla: Background error while fetching profile data:', response.error)
+					response = null
+				}
+
 				if (!response && retryCount < maxRetries - 1) {
 					console.log(`FormFilla: Retry ${retryCount + 1}/${maxRetries} - waiting for background script...`)
 					await new Promise(resolve => setTimeout(resolve, 500)) // Wait 500ms before retry
@@ -320,7 +365,7 @@ export class FormFillaContent {
 				}
 			}
 
-			if (response && response.profileData) {
+			if (isProfileDataResponse(response)) {
 				await this.fillFormWithData(fields, response.profileData)
 			} else {
 				// If still no response after retries, show error
@@ -333,7 +378,7 @@ export class FormFillaContent {
 		}
 	}
 
-	private async fillFormWithData(fields: Map<HTMLElement, FieldInfo>, profileData: any): Promise<void> {
+	private async fillFormWithData(fields: Map<HTMLElement, FieldInfo>, profileData: ProfileData): Promise<void> {
 		const settings = await this.getSettings()
 
 		for (const [element, fieldInfo] of fields) {
@@ -344,18 +389,25 @@ export class FormFillaContent {
 		}
 	}
 
-	private getValueForField(profileData: any, fieldInfo: FieldInfo): string {
+	private getValueForField(profileData: ProfileData, fieldInfo: FieldInfo): string {
 		// Special handling for bio field which is stored in custom data
 		if (fieldInfo.type === 'personal' && fieldInfo.subtype === 'bio') {
 			return profileData.custom?.bio || ''
 		}
 
 		const path = `${fieldInfo.type}.${fieldInfo.subtype}`
-		return this.getNestedValue(profileData, path) || ''
+		const value = this.getNestedValue(profileData, path)
+		return typeof value === 'string' ? value : ''
 	}
 
-	private getNestedValue(obj: any, path: string): any {
-		return path.split('.').reduce((o, p) => o?.[p], obj)
+	private getNestedValue(obj: unknown, path: string): unknown {
+		return path.split('.').reduce<unknown>((current, segment) => {
+			if (!current || typeof current !== 'object' || Array.isArray(current)) {
+				return undefined
+			}
+
+			return (current as Record<string, unknown>)[segment]
+		}, obj)
 	}
 
 	private async fillField(element: HTMLElement, value: string, delay: number = 0): Promise<void> {
@@ -442,21 +494,29 @@ export class FormFillaContent {
 		}, 5000)
 	}
 
-	private async getSettings(): Promise<any> {
-		const message = { type: 'getSettings' }
-		const validation = validateMessage(message, ['getSettings'])
+	private async getSettings(): Promise<ExtensionSettings> {
+		const message: BackgroundRequestMessage = { type: 'getSettings' }
+		const validation = validateMessage(message, BACKGROUND_REQUEST_TYPES)
 
 		if (!validation.isValid) {
 			console.error('FormFilla: Invalid outgoing message:', validation.error)
-			return { fillDelay: 50 }
+			return DEFAULT_CONTENT_SETTINGS
 		}
 
 		try {
 			const response = await this.sendMessageSafely(message)
-			return response || { fillDelay: 50 }
+			if (isSettingsResponse(response)) {
+				return response.settings
+			}
+
+			if (isErrorResponse(response)) {
+				console.error('FormFilla: Background error while loading settings:', response.error)
+			}
+
+			return DEFAULT_CONTENT_SETTINGS
 		} catch (error) {
 			console.error('FormFilla: Failed to get settings:', error)
-			return { fillDelay: 50 }
+			return DEFAULT_CONTENT_SETTINGS
 		}
 	}
 

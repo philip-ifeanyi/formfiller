@@ -1,6 +1,7 @@
 import { StorageService } from '@/lib/storage'
 import { ProfileManager } from '@/lib/profiles'
 import { DummyDataProvider } from '@/lib/dummy-data'
+import { type ContentCommandMessage, type ProfileData } from '@/types'
 
 class PopupUI {
 	private storage: StorageService
@@ -128,6 +129,15 @@ class PopupUI {
 		document.getElementById('help-link')?.addEventListener('click', this.openHelp.bind(this))
 	}
 
+	private sendFillFormMessage(tabId: number, profileData: ProfileData): void {
+		const message: ContentCommandMessage = {
+			type: 'fillForm',
+			profileData
+		}
+
+		chrome.tabs.sendMessage(tabId, message)
+	}
+
 	private async handleProfileClick(event: Event): Promise<void> {
 		const target = event.target as HTMLElement
 		const profileItem = target.closest('.profile-item') as HTMLElement
@@ -166,18 +176,16 @@ class PopupUI {
 			const defaultProfile = await this.profileManager.getDefaultProfile()
 			const profileData = defaultProfile ? defaultProfile.data : this.dummyData.getRandomProfile()
 
-			chrome.tabs.sendMessage(tab.id, {
-				type: 'fillForm',
-				profileData: profileData
-			})
+			if (profileData) {
+				this.sendFillFormMessage(tab.id, profileData)
+			}
 		} catch (error) {
 			console.error('Error getting profile data:', error)
 			// Fallback to random data
 			const randomProfile = this.dummyData.getRandomProfile()
-			chrome.tabs.sendMessage(tab.id, {
-				type: 'fillForm',
-				profileData: randomProfile
-			})
+			if (randomProfile) {
+				this.sendFillFormMessage(tab.id, randomProfile)
+			}
 		}
 
 		window.close()
@@ -188,10 +196,9 @@ class PopupUI {
 		if (!tab.id) return
 
 		const randomProfile = this.dummyData.getRandomProfile()
-		chrome.tabs.sendMessage(tab.id, {
-			type: 'fillForm',
-			profileData: randomProfile
-		})
+		if (randomProfile) {
+			this.sendFillFormMessage(tab.id, randomProfile)
+		}
 		window.close()
 	}
 
@@ -201,10 +208,7 @@ class PopupUI {
 
 		const profile = await this.profileManager.getProfile(profileId)
 		if (profile) {
-			chrome.tabs.sendMessage(tab.id, {
-				type: 'fillForm',
-				profileData: profile.data
-			})
+			this.sendFillFormMessage(tab.id, profile.data)
 		}
 	}
 
@@ -214,10 +218,7 @@ class PopupUI {
 
 		const profileData = this.dummyData.getProfile(profileName)
 		if (profileData) {
-			chrome.tabs.sendMessage(tab.id, {
-				type: 'fillForm',
-				profileData: profileData
-			})
+			this.sendFillFormMessage(tab.id, profileData)
 		}
 	}
 

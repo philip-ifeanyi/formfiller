@@ -2,14 +2,29 @@ import { ProfileManager } from '../lib/profiles'
 import { DummyDataProvider } from '../lib/dummy-data'
 import { StorageService } from '../lib/storage'
 import { validateMessage } from '../lib/security'
+import {
+	BACKGROUND_REQUEST_TYPES,
+	type BackgroundRequestMessage,
+	type BackgroundResponseMessage,
+	type ContentCommandMessage,
+	type ExtensionSettings,
+	type LegacyFieldPath,
+	type ProfileData
+} from '../types'
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
 
 class ContextMenuManager {
+	private storage: StorageService
 	private profileManager: ProfileManager
 	private dummyData: DummyDataProvider
-	private currentFieldType: string | null = null
+	private currentFieldType: LegacyFieldPath | null = null
 
 	constructor() {
 		const storage = StorageService.getInstance()
+		this.storage = storage
 		this.profileManager = new ProfileManager(storage)
 		this.dummyData = new DummyDataProvider()
 		this.initialize()
@@ -223,7 +238,7 @@ class ContextMenuManager {
 		return displayNames[profileName] || profileName
 	}
 
-	private updateMenuForField(fieldType: string, fieldDisplayName: string): void {
+	private updateMenuForField(fieldType: LegacyFieldPath, fieldDisplayName: string): void {
 		this.currentFieldType = fieldType
 
 		// Update menu items based on field type
@@ -238,10 +253,9 @@ class ContextMenuManager {
 		}
 	}
 
-	private async handleMessage(message: any, sender: chrome.runtime.MessageSender, sendResponse: (response?: any) => void): Promise<void> {
+	private async handleMessage(message: unknown, sender: chrome.runtime.MessageSender, sendResponse: (response?: BackgroundResponseMessage) => void): Promise<void> {
 		// Validate message structure and source
-		const expectedTypes = ['updateContextMenu', 'getFieldValue', 'getDefaultProfileData', 'getSettings', 'refreshContextMenu']
-		const validation = validateMessage(message, expectedTypes)
+		const validation = validateMessage(message, BACKGROUND_REQUEST_TYPES)
 
 		if (!validation.isValid) {
 			console.warn('FormFilla: Invalid message received:', validation.error)
@@ -259,22 +273,25 @@ class ContextMenuManager {
 			return
 		}
 
+		const typedMessage = message as BackgroundRequestMessage
+
 		try {
-			switch (message.type) {
+			switch (typedMessage.type) {
 				case 'updateContextMenu':
-					if (typeof message.fieldType !== 'string' || typeof message.fieldDisplayName !== 'string') {
+					if (!typedMessage.fieldType || !typedMessage.fieldDisplayName) {
 						sendResponse({ error: 'Invalid message parameters' })
 						return
 					}
-					this.updateMenuForField(message.fieldType, message.fieldDisplayName)
+					this.updateMenuForField(typedMessage.fieldType, typedMessage.fieldDisplayName)
+					sendResponse({ success: true })
 					break
 
 				case 'getFieldValue':
-					if (typeof message.fieldType !== 'string') {
+					if (!typedMessage.fieldType) {
 						sendResponse({ error: 'Invalid field type' })
 						return
 					}
-					const value = await this.getFieldValue(message.fieldType, message.subtype)
+					const value = await this.getFieldValue(typedMessage.fieldType, typedMessage.subtype)
 					sendResponse({ value })
 					break
 
@@ -303,7 +320,7 @@ class ContextMenuManager {
 
 				case 'getSettings':
 					const settings = await this.getSettings()
-					sendResponse(settings)
+					sendResponse({ settings })
 					break
 
 				case 'refreshContextMenu':
@@ -318,6 +335,10 @@ class ContextMenuManager {
 			console.error('FormFilla: Error handling message:', error)
 			sendResponse({ error: 'Internal error' })
 		}
+	}
+
+	private sendContentCommand(tabId: number, message: ContentCommandMessage): void {
+		chrome.tabs.sendMessage(tabId, message)
 	}
 
 	private async handleMenuClick(info: chrome.contextMenus.OnClickData, tab?: chrome.tabs.Tab): Promise<void> {
@@ -366,13 +387,14 @@ class ContextMenuManager {
 		return this.dummyData.generateRandomData(fieldType, subtype)
 	}
 
-	private async fillField(tabId: number, fieldType: string | null): Promise<void> {
+	private async fillField(tabId: number, fieldType: LegacyFieldPath | null): Promise<void> {
 		if (!fieldType) return
 
 		const [type, subtype] = fieldType.split('.')
+		if (!type || !subtype) return
 		const value = await this.getFieldValue(type, subtype)
 
-		chrome.tabs.sendMessage(tabId, {
+		this.sendContentCommand(tabId, {
 			type: 'fillField',
 			value: value
 		})
@@ -381,8 +403,9 @@ class ContextMenuManager {
 	private async fillEntireForm(tabId: number): Promise<void> {
 		const defaultProfile = await this.profileManager.getDefaultProfile()
 		const profileData = defaultProfile ? defaultProfile.data : this.dummyData.getRandomProfile()
+		if (!profileData) return
 
-		chrome.tabs.sendMessage(tabId, {
+		this.sendContentCommand(tabId, {
 			type: 'fillForm',
 			profileData: profileData
 		})
@@ -392,7 +415,7 @@ class ContextMenuManager {
 		const profile = await this.profileManager.getProfile(profileId)
 		if (!profile) return
 
-		chrome.tabs.sendMessage(tabId, {
+		this.sendContentCommand(tabId, {
 			type: 'fillForm',
 			profileData: profile.data
 		})
@@ -402,7 +425,7 @@ class ContextMenuManager {
 		const profileData = this.dummyData.getProfile(profileName)
 		if (!profileData) return
 
-		chrome.tabs.sendMessage(tabId, {
+		this.sendContentCommand(tabId, {
 			type: 'fillForm',
 			profileData: profileData
 		})
@@ -410,28 +433,29 @@ class ContextMenuManager {
 
 	private async fillWithRandomDummyData(tabId: number): Promise<void> {
 		const profileData = this.dummyData.getRandomProfile()
+		if (!profileData) return
 
-		chrome.tabs.sendMessage(tabId, {
+		this.sendContentCommand(tabId, {
 			type: 'fillForm',
 			profileData: profileData
 		})
 	}
 
-	private getValueFromProfile(profileData: any, type: string, subtype: string): string {
+	private getValueFromProfile(profileData: ProfileData, type: string, subtype: string): string {
 		const path = `${type}.${subtype}`
-		return this.getNestedValue(profileData, path) || ''
+		const value = this.getNestedValue(profileData, path)
+		return typeof value === 'string' ? value : ''
 	}
 
-	private getNestedValue(obj: any, path: string): any {
-		return path.split('.').reduce((o, p) => o?.[p], obj)
+	private getNestedValue(obj: unknown, path: string): unknown {
+		return path.split('.').reduce<unknown>((current, segment) => {
+			if (!isRecord(current)) return undefined
+			return current[segment]
+		}, obj)
 	}
 
-	private async getSettings(): Promise<any> {
-		return new Promise((resolve) => {
-			chrome.storage.sync.get(['settings'], (result) => {
-				resolve(result.settings || { fillDelay: 50 })
-			})
-		})
+	private async getSettings(): Promise<ExtensionSettings> {
+		return this.storage.getSettings()
 	}
 }
 

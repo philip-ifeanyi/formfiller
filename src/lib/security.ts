@@ -232,17 +232,19 @@ export function createSafeElement(tagName: string, textContent?: string, classNa
 /**
  * Validates message objects for inter-script communication
  */
-export function validateMessage(message: any, expectedTypes: string[]): { isValid: boolean; error?: string } {
+export function validateMessage(message: unknown, expectedTypes: readonly string[]): { isValid: boolean; error?: string } {
 	if (!message || typeof message !== 'object') {
 		return { isValid: false, error: 'Message must be an object' }
 	}
 
-	if (!message.type || typeof message.type !== 'string') {
+	const candidate = message as { type?: unknown }
+
+	if (!candidate.type || typeof candidate.type !== 'string') {
 		return { isValid: false, error: 'Message must have a string type' }
 	}
 
-	if (!expectedTypes.includes(message.type)) {
-		return { isValid: false, error: `Unknown message type: ${message.type}` }
+	if (!expectedTypes.includes(candidate.type)) {
+		return { isValid: false, error: `Unknown message type: ${candidate.type}` }
 	}
 
 	// Check for malicious patterns in message content
