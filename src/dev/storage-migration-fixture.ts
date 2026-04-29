@@ -102,7 +102,7 @@ function createLegacyProfile(profileId: string): Profile {
 			phone: '+1-555-0100',
 			dateOfBirth: '1991-06-15',
 			age: '34',
-			gender: 'prefer-not-to-say',
+			gender: 'male',
 			ssn: '123-45-6789'
 		},
 		address: {

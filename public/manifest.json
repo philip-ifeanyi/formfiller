@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "FormFilla",
-  "version": "1.1.0",
+  "version": "2.0.0",
   "description": "Dev/test-only form filler for localhost, approved test domains, and local fixtures",
   "permissions": [
     "storage",

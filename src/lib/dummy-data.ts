@@ -11,7 +11,7 @@ export class DummyDataProvider {
 				phone: '+1-555-0123',
 				dateOfBirth: '1990-05-15',
 				age: '33',
-				gender: 'prefer-not-to-say',
+				gender: 'male',
 				ssn: '123-45-6789'
 			},
 			address: {
