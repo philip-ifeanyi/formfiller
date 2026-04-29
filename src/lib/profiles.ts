@@ -1,5 +1,68 @@
-import { PROFILE_SCHEMA_VERSION, Profile, ProfileData } from '@/types'
+import {
+	type CanonicalFieldKey,
+	PROFILE_SCHEMA_VERSION,
+	Profile,
+	type ProfileData,
+	type ProfileValue
+} from '@/types'
 import { StorageService } from './storage'
+
+const CANONICAL_FIELD_TO_PROFILE_PATH: Record<string, string> = {
+	'person.firstName': 'personal.firstName',
+	'person.lastName': 'personal.lastName',
+	'person.fullName': 'personal.fullName',
+	'person.dateOfBirth': 'personal.dateOfBirth',
+	'person.age': 'personal.age',
+	'person.gender': 'personal.gender',
+	'person.bio': 'custom.bio',
+	'contact.email.primary': 'personal.email',
+	'contact.phone.primary': 'personal.phone',
+	'address.line1': 'address.street',
+	'address.line2': 'address.street2',
+	'address.city': 'address.city',
+	'address.stateOrProvince': 'address.state',
+	'address.postalCode': 'address.zip',
+	'address.country': 'address.country',
+	'company.name': 'company.name',
+	'company.title': 'company.title',
+	'company.department': 'company.department',
+	'company.website': 'company.website',
+	'payment.cardNumber': 'payment.cardNumber',
+	'payment.expiry': 'payment.expiry',
+	'payment.cvv': 'payment.cvv',
+	'payment.cardholderName': 'payment.cardholderName',
+	'account.username': 'account.username',
+	'account.password': 'account.password',
+	'account.confirmPassword': 'account.password',
+	'identity.ssn': 'personal.ssn'
+}
+
+function getNestedProfileValue(data: unknown, path: string): ProfileValue | undefined {
+	return path.split('.').reduce<unknown>((current, segment) => {
+		if (!current || typeof current !== 'object' || Array.isArray(current)) {
+			return undefined
+		}
+
+		return (current as Record<string, unknown>)[segment]
+	}, data) as ProfileValue | undefined
+}
+
+export function resolveProfileValueForFieldKey(
+	profileData: ProfileData,
+	fieldKey: CanonicalFieldKey
+): { profilePath: string; rawValue: ProfileValue | undefined } | null {
+	const mappedPath = CANONICAL_FIELD_TO_PROFILE_PATH[fieldKey]
+	const profilePath = mappedPath || (fieldKey.startsWith('custom.') ? fieldKey : '')
+
+	if (!profilePath) {
+		return null
+	}
+
+	return {
+		profilePath,
+		rawValue: getNestedProfileValue(profileData, profilePath)
+	}
+}
 
 export class ProfileManager {
 	constructor(private storage: StorageService) { }

@@ -1,36 +1,18 @@
 import { FieldDetector } from '../lib/field-detector'
 import { InteractionManager } from '../lib/interaction-manager'
 import {
-	BACKGROUND_REQUEST_TYPES,
 	CONTENT_COMMAND_TYPES,
 	type BackgroundRequestMessage,
 	type BackgroundResponseMessage,
 	type ContentCommandMessage,
 	type ContentResponseMessage,
-	type ExtensionSettings,
 	type FieldInfo,
 	type ProfileData
 } from '../types'
 import { validateMessage } from '../lib/security'
 
-const DEFAULT_CONTENT_SETTINGS: ExtensionSettings = {
-	autoFillEnabled: true,
-	defaultProfile: '',
-	fillDelay: 50,
-	highlightFields: true,
-	showButtons: true,
-	buttonPosition: 'inside-right',
-	contextMenuEnabled: true,
-	autoHideButtons: true,
-	buttonStyle: 'minimal'
-}
-
 function isProfileDataResponse(response: BackgroundResponseMessage | null): response is { profileData: ProfileData } {
 	return Boolean(response && 'profileData' in response)
-}
-
-function isSettingsResponse(response: BackgroundResponseMessage | null): response is { settings: ExtensionSettings } {
-	return Boolean(response && 'settings' in response)
 }
 
 function isErrorResponse(response: BackgroundResponseMessage | null): response is { error: string } {
@@ -126,16 +108,14 @@ export class FormFillaContent {
 	private handleFormFillRequest(profileData: ProfileData): void {
 		const forms = document.querySelectorAll('form')
 		forms.forEach(form => {
-			const fields = this.fieldDetector.detectFields(form)
-			this.fillFormWithData(fields, profileData)
+			void this.interactionManager.fillFormWithProfile(form, profileData)
 		})
 	}
 
 	private fillAllFormsOnPage(): void {
 		const forms = document.querySelectorAll('form')
 		forms.forEach(form => {
-			const fields = this.fieldDetector.detectFields(form)
-			this.fillForm(fields)
+			void this.fillForm(form)
 		})
 	}
 
@@ -143,21 +123,39 @@ export class FormFillaContent {
 		// Initial scan for forms
 		this.scanForms()
 
-		// Set up mutation observer to watch for dynamically added forms
+		// Set up mutation observer to watch for dynamically added forms and controls
 		this.mutationObserver = new MutationObserver((mutations) => {
 			let shouldScan = false
+			const affectedForms = new Set<HTMLFormElement>()
 
 			mutations.forEach((mutation) => {
 				if (mutation.type === 'childList') {
+					this.collectAffectedForms(mutation.target, affectedForms)
+
 					mutation.addedNodes.forEach((node) => {
 						if (node.nodeType === Node.ELEMENT_NODE) {
 							const element = node as Element
-							if (element.tagName === 'FORM' || element.querySelector('form')) {
+							if (this.isRelevantFormMutation(element)) {
 								shouldScan = true
 							}
+							this.collectAffectedForms(element, affectedForms)
+						}
+					})
+
+					mutation.removedNodes.forEach((node) => {
+						if (node.nodeType === Node.ELEMENT_NODE) {
+							const element = node as Element
+							if (this.isRelevantFormMutation(element)) {
+								shouldScan = true
+							}
+							this.collectAffectedForms(element, affectedForms)
 						}
 					})
 				}
+			})
+
+			affectedForms.forEach(form => {
+				this.interactionManager.notifyFormMutation(form)
 			})
 
 			if (shouldScan) {
@@ -171,6 +169,40 @@ export class FormFillaContent {
 		})
 
 		this.setupEventListeners()
+	}
+
+	private isRelevantFormMutation(element: Element): boolean {
+		return element.tagName === 'FORM' ||
+			element.matches('input, textarea, select') ||
+			Boolean(element.querySelector('form, input, textarea, select'))
+	}
+
+	private collectAffectedForms(node: Node, affectedForms: Set<HTMLFormElement>): void {
+		if (!(node instanceof Element)) {
+			return
+		}
+
+		const ownerForm = node instanceof HTMLFormElement ? node : node.closest('form')
+		if (ownerForm instanceof HTMLFormElement) {
+			affectedForms.add(ownerForm)
+		}
+
+		node.querySelectorAll('form').forEach(form => {
+			if (form instanceof HTMLFormElement) {
+				affectedForms.add(form)
+			}
+		})
+
+		node.querySelectorAll('input, textarea, select').forEach(control => {
+			const formOwner =
+				(control instanceof HTMLInputElement || control instanceof HTMLTextAreaElement || control instanceof HTMLSelectElement)
+					? control.form || control.closest('form')
+					: null
+
+			if (formOwner instanceof HTMLFormElement) {
+				affectedForms.add(formOwner)
+			}
+		})
 	}
 
 	private setupEventListeners(): void {
@@ -200,7 +232,7 @@ export class FormFillaContent {
 		})
 	}
 
-	private addFormFillButton(form: HTMLFormElement, fields: Map<HTMLElement, FieldInfo>, _index: number, formSignature: string): void {
+	private addFormFillButton(form: HTMLFormElement, _fields: Map<HTMLElement, FieldInfo>, _index: number, formSignature: string): void {
 		// Check if button already exists
 		if (form.querySelector('.formfilla-form-btn')) return
 
@@ -241,7 +273,7 @@ export class FormFillaContent {
 		button.addEventListener('click', (e) => {
 			e.preventDefault()
 			e.stopPropagation()
-			this.fillForm(fields)
+			void this.fillForm(form)
 		})
 
 		// Position relative to form
@@ -346,7 +378,7 @@ export class FormFillaContent {
 		})
 	}
 
-	private async fillForm(fields: Map<HTMLElement, FieldInfo>): Promise<void> {
+	private async fillForm(form: HTMLFormElement): Promise<void> {
 		try {
 			// Try to get profile data with retry logic in case background script is still initializing
 			let response = null
@@ -371,7 +403,7 @@ export class FormFillaContent {
 			}
 
 			if (isProfileDataResponse(response)) {
-				await this.fillFormWithData(fields, response.profileData)
+				await this.interactionManager.fillFormWithProfile(form, response.profileData)
 			} else {
 				// If still no response after retries, show error
 				console.warn('FormFilla: No profile data received after retries')
@@ -381,95 +413,6 @@ export class FormFillaContent {
 			console.error('FormFilla: Failed to get profile data:', error)
 			this.showUserMessage('FormFilla: Unable to fill form. Please try again.')
 		}
-	}
-
-	private async fillFormWithData(fields: Map<HTMLElement, FieldInfo>, profileData: ProfileData): Promise<void> {
-		const settings = await this.getSettings()
-
-		for (const [element, fieldInfo] of fields) {
-			const value = this.getValueForField(profileData, fieldInfo)
-			if (value) {
-				await this.fillField(element, value, settings.fillDelay)
-			}
-		}
-	}
-
-	private getValueForField(profileData: ProfileData, fieldInfo: FieldInfo): string {
-		// Special handling for bio field which is stored in custom data
-		if (fieldInfo.type === 'personal' && fieldInfo.subtype === 'bio') {
-			return profileData.custom?.bio || ''
-		}
-
-		const path = `${fieldInfo.type}.${fieldInfo.subtype}`
-		const value = this.getNestedValue(profileData, path)
-		return typeof value === 'string' ? value : ''
-	}
-
-	private getNestedValue(obj: unknown, path: string): unknown {
-		return path.split('.').reduce<unknown>((current, segment) => {
-			if (!current || typeof current !== 'object' || Array.isArray(current)) {
-				return undefined
-			}
-
-			return (current as Record<string, unknown>)[segment]
-		}, obj)
-	}
-
-	private async fillField(element: HTMLElement, value: string, delay: number = 0): Promise<void> {
-		if (!this.isFormField(element)) return
-
-		const inputElement = element as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement
-
-		// Focus the field
-		inputElement.focus()
-
-		if (inputElement instanceof HTMLInputElement &&
-			(inputElement.type === 'checkbox' || inputElement.type === 'radio')) {
-			inputElement.checked = Boolean(value)
-		} else if (inputElement instanceof HTMLSelectElement) {
-			// Try to find matching option
-			const option = Array.from(inputElement.options).find(opt =>
-				opt.value === value || opt.textContent === value
-			)
-			if (option) {
-				inputElement.value = option.value
-			}
-		} else {
-			// Simulate human-like typing
-			if (delay > 0) {
-				inputElement.value = ''
-				for (const char of value) {
-					inputElement.value += char
-					inputElement.dispatchEvent(new Event('input', { bubbles: true }))
-					await this.delay(delay)
-				}
-			} else {
-				inputElement.value = value
-				inputElement.dispatchEvent(new Event('input', { bubbles: true }))
-			}
-		}
-
-		// Trigger change event
-		inputElement.dispatchEvent(new Event('change', { bubbles: true }))
-
-		// Add visual feedback
-		this.addFillFeedback(inputElement)
-
-		inputElement.blur()
-	}
-
-	private addFillFeedback(element: HTMLElement): void {
-		// Add temporary highlight to show field was filled
-		const originalBorder = element.style.border
-		const originalBoxShadow = element.style.boxShadow
-
-		element.style.border = '2px solid #4CAF50'
-		element.style.boxShadow = '0 0 5px rgba(76, 175, 80, 0.5)'
-
-		setTimeout(() => {
-			element.style.border = originalBorder
-			element.style.boxShadow = originalBoxShadow
-		}, 1000)
 	}
 
 	private showUserMessage(message: string): void {
@@ -499,40 +442,10 @@ export class FormFillaContent {
 		}, 5000)
 	}
 
-	private async getSettings(): Promise<ExtensionSettings> {
-		const message: BackgroundRequestMessage = { type: 'getSettings' }
-		const validation = validateMessage(message, BACKGROUND_REQUEST_TYPES)
-
-		if (!validation.isValid) {
-			console.error('FormFilla: Invalid outgoing message:', validation.error)
-			return DEFAULT_CONTENT_SETTINGS
-		}
-
-		try {
-			const response = await this.sendMessageSafely(message)
-			if (isSettingsResponse(response)) {
-				return response.settings
-			}
-
-			if (isErrorResponse(response)) {
-				console.error('FormFilla: Background error while loading settings:', response.error)
-			}
-
-			return DEFAULT_CONTENT_SETTINGS
-		} catch (error) {
-			console.error('FormFilla: Failed to get settings:', error)
-			return DEFAULT_CONTENT_SETTINGS
-		}
-	}
-
 	private isFormField(element: HTMLElement): boolean {
 		return element.tagName === 'INPUT' ||
 			element.tagName === 'TEXTAREA' ||
 			element.tagName === 'SELECT'
-	}
-
-	private delay(ms: number): Promise<void> {
-		return new Promise(resolve => setTimeout(resolve, ms))
 	}
 
 	// Cleanup method

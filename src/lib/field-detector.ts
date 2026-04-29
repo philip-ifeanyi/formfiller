@@ -100,7 +100,7 @@ const SUPPORTED_CONTROL_KINDS_BY_LEGACY: Partial<Record<string, FieldControlKind
 	'address.country': ['select', 'text'],
 	'company.name': ['text'],
 	'company.title': ['text'],
-	'company.department': ['text', 'select'],
+	'company.department': ['text', 'select', 'checkbox'],
 	'company.website': ['text'],
 	'payment.cardNumber': ['text', 'number'],
 	'payment.expiry': ['text', 'date', 'datetime'],
@@ -126,6 +126,7 @@ const POSITIVE_TOKENS_BY_LEGACY: Partial<Record<string, string[]>> = {
 	'payment.cvv': ['cvv', 'cvc', 'security code'],
 	'payment.cardholderName': ['cardholder', 'name on card'],
 	'account.username': ['username', 'login'],
+	'account.password': ['password'],
 	'account.confirmPassword': ['confirm password', 'repeat password']
 }
 const NEGATIVE_TOKENS_BY_LEGACY: Partial<Record<string, string[]>> = {
@@ -676,7 +677,8 @@ export class FieldDetector {
 		let confidence = 0
 		const reasons: string[] = []
 		const evidenceText = this.buildEvidenceSearchText(candidate.evidence)
-		const selectorMatches = target.pattern.selectors.filter(selector => candidate.element.matches(selector))
+		const directEvidenceText = this.buildTokenEvidenceText(candidate.evidence)
+		const selectorMatches = target.pattern.selectors.filter(selector => this.matchesHeuristicSelector(candidate, selector))
 
 		if (selectorMatches.length > 0) {
 			confidence += CLASSIFIER_WEIGHTS.selector
@@ -713,7 +715,7 @@ export class FieldDetector {
 		}
 
 		const negativeTokens = (target.entry.negativeTokens || []).filter(token => {
-			return evidenceText.includes(this.normalizeEvidenceText(token))
+			return directEvidenceText.includes(this.normalizeEvidenceText(token))
 		})
 		if (negativeTokens.length > 0) {
 			confidence -= Math.min(
@@ -741,6 +743,32 @@ export class FieldDetector {
 			confidence: Math.max(0, Math.min(1, confidence)),
 			reasons: this.uniqueReasons(reasons)
 		}
+	}
+
+	private matchesHeuristicSelector(candidate: FieldCandidate, selector: string): boolean {
+		if (candidate.element.matches(selector)) {
+			return true
+		}
+
+		const attributeSelectorMatch = selector.match(/^\[([a-z-]+)(\*=|=)"([^"]+)"\]$/i)
+		if (!attributeSelectorMatch) {
+			return false
+		}
+
+		const [, attributeName, operator, expectedValue] = attributeSelectorMatch
+		const attributeValue = candidate.attributes[attributeName] || candidate.element.getAttribute(attributeName) || ''
+		if (!attributeValue) {
+			return false
+		}
+
+		const actualValue = attributeValue.toLowerCase()
+		const normalizedExpectedValue = expectedValue.toLowerCase()
+
+		if (operator === '=') {
+			return actualValue === normalizedExpectedValue
+		}
+
+		return actualValue.includes(normalizedExpectedValue)
 	}
 
 	private getMatchedEvidence(evidence: FieldEvidence[], patterns: RegExp[]): FieldEvidence[] {
@@ -863,6 +891,14 @@ export class FieldDetector {
 			.filter(Boolean)
 			.join(' ')
 			.toLowerCase()
+	}
+
+	private buildTokenEvidenceText(evidence: FieldEvidence[]): string {
+		const directEvidence = evidence.filter(entry => {
+			return !['surrounding-text', 'peer-context', 'fieldset'].includes(entry.source)
+		})
+
+		return this.buildEvidenceSearchText(directEvidence)
 	}
 
 	private normalizeEvidenceText(value: string): string {

@@ -49,6 +49,44 @@
 		button:hover {
 			background: #0056b3;
 		}
+
+		fieldset {
+			border: 1px solid #ddd;
+			border-radius: 6px;
+			padding: 16px;
+			margin: 12px 0;
+		}
+
+		legend {
+			padding: 0 8px;
+			font-weight: bold;
+		}
+
+		.control-row {
+			display: flex;
+			align-items: flex-start;
+			gap: 10px;
+			margin-bottom: 10px;
+		}
+
+		.control-row input[type="checkbox"],
+		.control-row input[type="radio"] {
+			width: auto;
+			margin: 3px 0 0;
+			padding: 0;
+			flex-shrink: 0;
+		}
+
+		.control-row label {
+			margin: 0;
+			font-weight: normal;
+		}
+
+		.helper-text {
+			margin: 0 0 12px;
+			color: #555;
+			font-size: 14px;
+		}
 	</style>
 </head>
 
@@ -189,6 +227,80 @@
 			<input type="tel" id="workPhone" name="workPhone" placeholder="Enter work phone number">
 
 			<button type="submit">Submit Company Info</button>
+		</form>
+	</div>
+
+	<div class="form-container">
+		<h2>Preferences and Consent</h2>
+		<p class="helper-text">Age, date of birth, gender, and department are wired to existing canonical profile keys
+			across number, datetime-local, radio, select, and checkbox variants. Consent checkboxes remain manual coverage
+			targets.</p>
+		<form>
+			<label for="age">Age:</label>
+			<input type="number" id="age" name="age" min="0" max="120" placeholder="Enter your age">
+
+
+			<label for="birthDateTime">Date of Birth (Date-Time Variant):</label>
+			<input type="datetime-local" id="birthDateTime" name="birthDateTime" autocomplete="bday">
+
+			<fieldset>
+				<legend>Gender</legend>
+				<div class="control-row">
+					<input type="radio" id="genderFemale" name="gender" value="female">
+					<label for="genderFemale">Female</label>
+				</div>
+				<div class="control-row">
+					<input type="radio" id="genderMale" name="gender" value="male">
+					<label for="genderMale">Male</label>
+				</div>
+				<div class="control-row">
+					<input type="radio" id="genderOther" name="gender" value="other">
+					<label for="genderOther">Other</label>
+				</div>
+				<div class="control-row">
+					<input type="radio" id="genderPreferNotToSay" name="gender" value="prefer-not-to-say">
+					<label for="genderPreferNotToSay">Prefer not to say</label>
+				</div>
+			</fieldset>
+
+			<label for="departmentMulti">Department (Multi-Select Variant):</label>
+			<select id="departmentMulti" name="department" multiple size="4">
+				<option value="engineering">Engineering</option>
+				<option value="marketing">Marketing</option>
+				<option value="product">Product</option>
+				<option value="design">Design</option>
+				<option value="support">Support</option>
+			</select>
+
+			<fieldset>
+				<legend>Department (Checkbox Variant)</legend>
+				<div class="control-row">
+					<input type="checkbox" id="departmentCheckboxEngineering" name="departmentPreference" value="engineering">
+					<label for="departmentCheckboxEngineering">Engineering</label>
+				</div>
+				<div class="control-row">
+					<input type="checkbox" id="departmentCheckboxMarketing" name="departmentPreference" value="marketing">
+					<label for="departmentCheckboxMarketing">Marketing</label>
+				</div>
+				<div class="control-row">
+					<input type="checkbox" id="departmentCheckboxFinance" name="departmentPreference" value="finance">
+					<label for="departmentCheckboxFinance">Finance</label>
+				</div>
+			</fieldset>
+
+			<fieldset>
+				<legend>Consent</legend>
+				<div class="control-row">
+					<input type="checkbox" id="newsletterOptIn" name="newsletterOptIn" value="yes">
+					<label for="newsletterOptIn">Send me product updates and release notes.</label>
+				</div>
+				<div class="control-row">
+					<input type="checkbox" id="termsAccepted" name="termsAccepted" value="accepted">
+					<label for="termsAccepted">I agree to the demo terms for fixture testing.</label>
+				</div>
+			</fieldset>
+
+			<button type="submit">Save Preferences</button>
 		</form>
 	</div>
 

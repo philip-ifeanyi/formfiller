@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>FormFilla FF-08 Dynamic Fixture</title>
+	<style>
+		body {
+			font-family: Arial, sans-serif;
+			max-width: 900px;
+			margin: 0 auto;
+			padding: 24px;
+			line-height: 1.5;
+		}
+
+		.panel {
+			border: 1px solid #d8d8d8;
+			border-radius: 10px;
+			padding: 20px;
+			margin: 20px 0;
+			background: #fff;
+		}
+
+		h1,
+		h2 {
+			margin-top: 0;
+		}
+
+		label {
+			display: block;
+			font-weight: bold;
+			margin: 10px 0 6px;
+		}
+
+		input,
+		button {
+			box-sizing: border-box;
+		}
+
+		input {
+			width: 100%;
+			padding: 10px 12px;
+			border: 1px solid #c9c9c9;
+			border-radius: 6px;
+			margin-bottom: 12px;
+		}
+
+		button {
+			border: none;
+			border-radius: 6px;
+			padding: 10px 14px;
+			background: #1f6feb;
+			color: #fff;
+			cursor: pointer;
+		}
+
+		button:hover {
+			background: #1558b0;
+		}
+
+		.fixture-note {
+			color: #555;
+			font-size: 14px;
+			margin-bottom: 16px;
+		}
+
+		.status {
+			font-family: monospace;
+			font-size: 13px;
+			padding: 10px 12px;
+			border-radius: 6px;
+			background: #f5f5f5;
+			color: #333;
+		}
+	</style>
+</head>
+
+<body>
+	<h1>FF-08 Dynamic Form Resilience Fixture</h1>
+	<p>This page is a permanent regression surface for delayed rendering and stale-element replacement during a fill run.
+	</p>
+
+	<div class="panel">
+		<h2>How To Use</h2>
+		<ol>
+			<li>Load the extension build.</li>
+			<li>Click the in-page <strong>Fill Form</strong> button on each fixture.</li>
+			<li>Confirm the replacement email field still finishes with a value and the delayed phone field appears and fills
+				on a later pass.</li>
+		</ol>
+		<button type="button" id="resetFixtures">Reset Fixtures</button>
+	</div>
+
+	<div class="panel" data-ff08-fixture="dynamic-replace">
+		<h2>Dynamic Replace Fixture</h2>
+		<p class="fixture-note">The email input is replaced shortly after the first input event. FF-08 should recover on a
+			retry and keep the expected value on the replacement node.</p>
+		<form id="dynamicReplaceForm">
+			<label for="dynamicReplaceEmail">Email</label>
+			<input type="email" id="dynamicReplaceEmail" name="email" placeholder="Replace-after-input email">
+			<button type="submit">Submit</button>
+		</form>
+		<div class="status" id="dynamicReplaceStatus">Waiting for input.</div>
+	</div>
+
+	<div class="panel" data-ff08-fixture="delayed-discovery">
+		<h2>Delayed Discovery Fixture</h2>
+		<p class="fixture-note">The phone field is inserted after the first name field begins filling. FF-08 should rescan,
+			discover the new field, and fill it before the session ends.</p>
+		<form id="delayedDiscoveryForm">
+			<label for="delayedFirstName">First Name</label>
+			<input type="text" id="delayedFirstName" name="firstName" placeholder="Delayed fixture first name">
+			<div id="delayedPhoneSlot"></div>
+			<button type="submit">Submit</button>
+		</form>
+		<div class="status" id="delayedDiscoveryStatus">Phone field has not been inserted yet.</div>
+	</div>
+
+	<script>
+		function initializeFixtures() {
+			const dynamicReplaceForm = document.getElementById('dynamicReplaceForm');
+			const dynamicReplaceStatus = document.getElementById('dynamicReplaceStatus');
+			const delayedDiscoveryForm = document.getElementById('delayedDiscoveryForm');
+			const delayedPhoneSlot = document.getElementById('delayedPhoneSlot');
+			const delayedDiscoveryStatus = document.getElementById('delayedDiscoveryStatus');
+
+			let replacementCount = 0;
+			let delayedFieldInserted = false;
+
+			dynamicReplaceForm?.addEventListener('submit', (event) => {
+				event.preventDefault();
+			});
+
+			delayedDiscoveryForm?.addEventListener('submit', (event) => {
+				event.preventDefault();
+			});
+
+			dynamicReplaceForm?.addEventListener('input', (event) => {
+				const target = event.target;
+				if (!(target instanceof HTMLInputElement) || target.id !== 'dynamicReplaceEmail' || replacementCount > 0) {
+					return;
+				}
+
+				replacementCount += 1;
+				dynamicReplaceStatus.textContent = 'Replacing the email field after the first input event.';
+
+				window.setTimeout(() => {
+					const replacement = target.cloneNode(true);
+					replacement.value = '';
+					target.replaceWith(replacement);
+					dynamicReplaceStatus.textContent = 'Replacement input mounted. The retry path should refill it.';
+				}, 40);
+			});
+
+			delayedDiscoveryForm?.addEventListener('input', (event) => {
+				const target = event.target;
+				if (!(target instanceof HTMLInputElement) || target.id !== 'delayedFirstName' || delayedFieldInserted) {
+					return;
+				}
+
+				delayedFieldInserted = true;
+				delayedDiscoveryStatus.textContent = 'Scheduling delayed phone field insertion.';
+
+				window.setTimeout(() => {
+					delayedPhoneSlot.innerHTML = `
+						<label for="delayedPhone">Phone Number</label>
+						<input type="tel" id="delayedPhone" name="phone" placeholder="Delayed phone field">
+					`;
+					delayedDiscoveryStatus.textContent = 'Delayed phone field inserted. The rescan path should discover and fill it.';
+				}, 80);
+			});
+		}
+
+		document.getElementById('resetFixtures')?.addEventListener('click', () => {
+			window.location.reload();
+		});
+
+		initializeFixtures();
+	</script>
+</body>
+
+</html>

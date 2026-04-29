@@ -58,6 +58,16 @@ A powerful form-filling browser extension designed for developers and testers. A
 4. Right-click on form fields to access context menu options
 5. Click the extension icon in the toolbar to access the popup
 
+### FF-08 Dynamic Fixture
+
+To manually verify retry and rescan behavior for delayed or replaced native controls:
+
+1. Run `npm run build`
+2. Open `ff08-dynamic-test.html` in a browser
+3. Trigger the fixture forms with the extension's in-page `Fill Form` buttons
+
+The dynamic replace fixture swaps an email input after the first input event, and the delayed discovery fixture inserts a phone field after the fill run begins. A correct FF-08 implementation should recover and fill both cases.
+
 ### Verifying Profile Migration
 
 To manually verify legacy profile upgrades through the real storage layer:
