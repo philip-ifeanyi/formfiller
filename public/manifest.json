@@ -59,6 +59,15 @@
     "default_popup": "src/popup/index.html",
     "default_title": "FormFilla"
   },
+  "commands": {
+    "fill-current-page": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+Y",
+        "mac": "Command+Shift+Y"
+      },
+      "description": "Fill the current page with the active FormFilla profile"
+    }
+  },
   "options_page": "src/options/index.html",
   "web_accessible_resources": [
     {

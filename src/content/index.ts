@@ -6,6 +6,7 @@ import {
 	type BackgroundResponseMessage,
 	type ContentCommandMessage,
 	type ContentResponseMessage,
+	type ExtensionSettings,
 	type FieldInfo,
 	type FillResult,
 	type ProfileData
@@ -20,11 +21,22 @@ function isErrorResponse(response: BackgroundResponseMessage | null): response i
 	return Boolean(response && 'error' in response)
 }
 
+function isSettingsResponse(response: BackgroundResponseMessage | null): response is { settings: ExtensionSettings } {
+	return Boolean(response && 'settings' in response)
+}
+
 export class FormFillaContent {
 	private fieldDetector: FieldDetector
 	private interactionManager: InteractionManager
 	private mutationObserver: MutationObserver | null = null
 	private observedForms: Set<string> = new Set()
+	private pageControlsEnabled = true
+	private fillableFormCount = 0
+	private floatingActionButtonHost: HTMLDivElement | null = null
+	private floatingActionButton: HTMLButtonElement | null = null
+	private floatingActionButtonBadge: HTMLSpanElement | null = null
+	private floatingActionButtonLabel: HTMLSpanElement | null = null
+	private isPageFillInProgress = false
 
 	constructor() {
 		this.fieldDetector = new FieldDetector()
@@ -34,11 +46,15 @@ export class FormFillaContent {
 	}
 
 	private initialize(): void {
+		const start = () => {
+			void this.setup()
+		}
+
 		// Wait for DOM to be ready
 		if (document.readyState === 'loading') {
-			document.addEventListener('DOMContentLoaded', () => this.setupFormDetection())
+			document.addEventListener('DOMContentLoaded', start, { once: true })
 		} else {
-			this.setupFormDetection()
+			start()
 		}
 
 		// Set up message listener for background script communication
@@ -46,6 +62,11 @@ export class FormFillaContent {
 			void this.handleMessage(message, sender, sendResponse)
 			return true // Keep the message channel open for async responses
 		})
+	}
+
+	private async setup(): Promise<void> {
+		await this.loadPageControlSettings()
+		this.setupFormDetection()
 	}
 
 	private async handleMessage(message: unknown, sender: chrome.runtime.MessageSender, sendResponse: (response?: ContentResponseMessage) => void): Promise<void> {
@@ -113,9 +134,23 @@ export class FormFillaContent {
 	}
 
 	private async fillAllFormsOnPage(): Promise<FillResult[]> {
-		const forms = document.querySelectorAll('form')
-		const results = await Promise.all(Array.from(forms).map(form => this.fillForm(form)))
-		return results.flat()
+		const profileData = await this.getDefaultProfileDataWithRetry()
+		if (!profileData) {
+			console.warn('FormFilla: No profile data received after retries')
+			this.showUserMessage('FormFilla: Unable to get profile data. Please try again.')
+			return []
+		}
+
+		return this.handleFormFillRequest(profileData)
+	}
+
+	private async loadPageControlSettings(): Promise<void> {
+		const response = await this.sendMessageSafely({ type: 'getSettings' })
+		if (!isSettingsResponse(response)) {
+			return
+		}
+
+		this.pageControlsEnabled = response.settings.showButtons && response.settings.autoFillEnabled
 	}
 
 	private setupFormDetection(): void {
@@ -218,17 +253,25 @@ export class FormFillaContent {
 
 	private scanForms(): void {
 		const snapshots = this.fieldDetector.collectFormSnapshots(document)
+		let fillableFormCount = 0
 
 		snapshots.forEach((snapshot, index) => {
+			const fields = this.fieldDetector.detectFieldsFromSnapshot(snapshot)
+			if (fields.size === 0) return
+
+			fillableFormCount += 1
+
 			if (this.observedForms.has(snapshot.domSignature)) return
 
-			const fields = this.fieldDetector.detectFieldsFromSnapshot(snapshot)
-
-			if (fields.size > 0) {
+			if (this.pageControlsEnabled) {
 				this.addFormFillButton(snapshot.form, fields, index, snapshot.domSignature)
-				this.observedForms.add(snapshot.domSignature)
 			}
+
+			this.observedForms.add(snapshot.domSignature)
 		})
+
+		this.fillableFormCount = fillableFormCount
+		this.updateFloatingActionButton()
 	}
 
 	private addFormFillButton(form: HTMLFormElement, _fields: Map<HTMLElement, FieldInfo>, _index: number, formSignature: string): void {
@@ -282,6 +325,166 @@ export class FormFillaContent {
 
 		form.dataset.formfillaSnapshot = formSignature
 		form.appendChild(button)
+	}
+
+	private updateFloatingActionButton(): void {
+		if (!this.pageControlsEnabled || this.fillableFormCount === 0) {
+			this.removeFloatingActionButton()
+			return
+		}
+
+		const button = this.ensureFloatingActionButton()
+		button.title = this.fillableFormCount === 1
+			? 'Fill 1 detected form with FormFilla'
+			: `Fill ${this.fillableFormCount} detected forms with FormFilla`
+
+		if (this.floatingActionButtonBadge) {
+			this.floatingActionButtonBadge.textContent = this.isPageFillInProgress ? '…' : String(this.fillableFormCount)
+		}
+
+		if (this.floatingActionButtonLabel) {
+			this.floatingActionButtonLabel.textContent = this.isPageFillInProgress ? 'Filling…' : 'Fill Page'
+		}
+
+		button.disabled = this.isPageFillInProgress
+	}
+
+	private ensureFloatingActionButton(): HTMLButtonElement {
+		if (this.floatingActionButtonHost && this.floatingActionButton) {
+			return this.floatingActionButton
+		}
+
+		const host = document.createElement('div')
+		host.className = 'formfilla-floating-action-host'
+		host.style.cssText = `
+			position: fixed;
+			right: 18px;
+			bottom: 18px;
+			z-index: 2147483646;
+		`
+
+		const shadowRoot = host.attachShadow({ mode: 'open' })
+		const styles = document.createElement('style')
+		styles.textContent = `
+			:host {
+				all: initial;
+			}
+
+			button {
+				all: unset;
+				box-sizing: border-box;
+				display: inline-flex;
+				align-items: center;
+				gap: 8px;
+				height: 44px;
+				padding: 0 14px;
+				border-radius: 999px;
+				background: rgba(22, 93, 74, 0.96);
+				color: #fffdf8;
+				font: 600 13px/1 'Trebuchet MS', 'Lucida Sans Unicode', sans-serif;
+				box-shadow: 0 14px 30px rgba(17, 45, 36, 0.18);
+				cursor: pointer;
+				transition: transform 0.18s ease, box-shadow 0.18s ease, opacity 0.18s ease;
+			}
+
+			button:hover {
+				transform: translateY(-1px);
+				box-shadow: 0 18px 34px rgba(17, 45, 36, 0.22);
+			}
+
+			button:focus-visible {
+				outline: 2px solid #fffdf8;
+				outline-offset: 2px;
+			}
+
+			button:disabled {
+				cursor: progress;
+				opacity: 0.82;
+				transform: none;
+				box-shadow: 0 10px 18px rgba(17, 45, 36, 0.18);
+			}
+
+			.formfilla-fab__badge {
+				display: inline-flex;
+				align-items: center;
+				justify-content: center;
+				width: 22px;
+				height: 22px;
+				border-radius: 999px;
+				background: rgba(255, 255, 255, 0.14);
+				font-size: 12px;
+				font-weight: 700;
+			}
+
+			.formfilla-fab__label {
+				white-space: nowrap;
+			}
+		`
+
+		const button = document.createElement('button')
+		button.type = 'button'
+		button.setAttribute('aria-label', 'Fill current page with FormFilla')
+
+		const badge = document.createElement('span')
+		badge.className = 'formfilla-fab__badge'
+
+		const label = document.createElement('span')
+		label.className = 'formfilla-fab__label'
+
+		button.appendChild(badge)
+		button.appendChild(label)
+		button.addEventListener('click', (event) => {
+			event.preventDefault()
+			event.stopPropagation()
+			void this.handleFloatingActionButtonClick()
+		})
+
+		shadowRoot.append(styles, button)
+		document.body.appendChild(host)
+
+		this.floatingActionButtonHost = host
+		this.floatingActionButton = button
+		this.floatingActionButtonBadge = badge
+		this.floatingActionButtonLabel = label
+
+		return button
+	}
+
+	private removeFloatingActionButton(): void {
+		this.floatingActionButtonHost?.remove()
+		this.floatingActionButtonHost = null
+		this.floatingActionButton = null
+		this.floatingActionButtonBadge = null
+		this.floatingActionButtonLabel = null
+	}
+
+	private async handleFloatingActionButtonClick(): Promise<void> {
+		if (this.isPageFillInProgress) {
+			return
+		}
+
+		this.isPageFillInProgress = true
+		this.updateFloatingActionButton()
+
+		try {
+			const results = await this.fillAllFormsOnPage()
+			if (results.length === 0) {
+				return
+			}
+
+			const filledCount = results.filter(result => result.status === 'filled').length
+			const issueCount = results.length - filledCount
+			const issueSummary = issueCount > 0
+				? ` ${issueCount} field${issueCount === 1 ? ' needs' : 's need'} review or retry.`
+				: ''
+
+			this.showUserMessage(
+				`FormFilla: Filled ${filledCount} of ${results.length} fields across ${this.fillableFormCount} form${this.fillableFormCount === 1 ? '' : 's'}.${issueSummary}`
+			)
+		} finally {
+			this.isPageFillInProgress = false
+			this.updateFloatingActionButton()
+		}
 	}
 
 	private handleFieldFocus(event: FocusEvent): void {
@@ -377,38 +580,41 @@ export class FormFillaContent {
 		})
 	}
 
-	private async fillForm(form: HTMLFormElement): Promise<FillResult[]> {
-		try {
-			// Try to get profile data with retry logic in case background script is still initializing
-			let response = null
-			let retryCount = 0
-			const maxRetries = 3
+	private async getDefaultProfileDataWithRetry(): Promise<ProfileData | null> {
+		let response = null
+		let retryCount = 0
+		const maxRetries = 3
 
-			while (retryCount < maxRetries && !response) {
-				response = await this.sendMessageSafely({ type: 'getDefaultProfileData' })
+		while (retryCount < maxRetries && !response) {
+			response = await this.sendMessageSafely({ type: 'getDefaultProfileData' })
 
-				if (isErrorResponse(response)) {
-					console.warn('FormFilla: Background error while fetching profile data:', response.error)
-					response = null
-				}
-
-				if (!response && retryCount < maxRetries - 1) {
-					console.log(`FormFilla: Retry ${retryCount + 1}/${maxRetries} - waiting for background script...`)
-					await new Promise(resolve => setTimeout(resolve, 500)) // Wait 500ms before retry
-					retryCount++
-				} else {
-					break
-				}
+			if (isErrorResponse(response)) {
+				console.warn('FormFilla: Background error while fetching profile data:', response.error)
+				response = null
 			}
 
-			if (isProfileDataResponse(response)) {
-				return await this.interactionManager.fillFormWithProfile(form, response.profileData)
+			if (!response && retryCount < maxRetries - 1) {
+				console.log(`FormFilla: Retry ${retryCount + 1}/${maxRetries} - waiting for background script...`)
+				await new Promise(resolve => setTimeout(resolve, 500))
+				retryCount += 1
 			} else {
-				// If still no response after retries, show error
+				break
+			}
+		}
+
+		return isProfileDataResponse(response) ? response.profileData : null
+	}
+
+	private async fillForm(form: HTMLFormElement): Promise<FillResult[]> {
+		try {
+			const profileData = await this.getDefaultProfileDataWithRetry()
+			if (!profileData) {
 				console.warn('FormFilla: No profile data received after retries')
 				this.showUserMessage('FormFilla: Unable to get profile data. Please try again.')
 				return []
 			}
+
+			return await this.interactionManager.fillFormWithProfile(form, profileData)
 		} catch (error) {
 			console.error('FormFilla: Failed to get profile data:', error)
 			this.showUserMessage('FormFilla: Unable to fill form. Please try again.')
@@ -456,6 +662,7 @@ export class FormFillaContent {
 		}
 
 		this.interactionManager.destroy()
+		this.removeFloatingActionButton()
 
 		// Remove all form buttons
 		document.querySelectorAll('.formfilla-form-btn').forEach(btn => btn.remove())

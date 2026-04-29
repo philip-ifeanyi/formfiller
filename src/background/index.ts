@@ -12,6 +12,8 @@ import {
 	type ProfileData
 } from '../types'
 
+const FILL_CURRENT_PAGE_COMMAND = 'fill-current-page'
+
 function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
@@ -50,6 +52,10 @@ class ContextMenuManager {
 					sendResponse({ error: 'Internal error processing message' })
 				})
 				return true // Keep the message channel open for async responses
+			})
+
+			chrome.commands.onCommand.addListener((command) => {
+				void this.handleCommand(command)
 			})
 
 			// Set up extension install/update listener
@@ -339,6 +345,28 @@ class ContextMenuManager {
 
 	private sendContentCommand(tabId: number, message: ContentCommandMessage): void {
 		chrome.tabs.sendMessage(tabId, message)
+	}
+
+	private async handleCommand(command: string): Promise<void> {
+		switch (command) {
+			case FILL_CURRENT_PAGE_COMMAND: {
+				const tabId = await this.getActiveTabId()
+				if (!tabId) {
+					return
+				}
+
+				await this.fillEntireForm(tabId)
+				break
+			}
+
+			default:
+				break
+		}
+	}
+
+	private async getActiveTabId(): Promise<number | null> {
+		const [activeTab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true })
+		return activeTab?.id ?? null
 	}
 
 	private async handleMenuClick(info: chrome.contextMenus.OnClickData, tab?: chrome.tabs.Tab): Promise<void> {
