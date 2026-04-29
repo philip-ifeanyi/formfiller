@@ -7,6 +7,7 @@ import {
 	type ContentCommandMessage,
 	type ContentResponseMessage,
 	type ExtensionSettings,
+	type FieldReviewItem,
 	type FieldInfo,
 	type FillResult,
 	type ProfileData
@@ -102,6 +103,13 @@ export class FormFillaContent {
 					sendResponse({ success: true, results })
 					break
 
+					case 'reviewFields':
+						const items = typedMessage.profileData
+							? this.reviewAllFormsOnPage(typedMessage.profileData)
+							: await this.reviewAllFormsWithDefaultProfile()
+						sendResponse({ success: true, items })
+						break
+
 				case 'getFormFields':
 					const forms = document.querySelectorAll('form')
 					const fieldCount = Array.from(forms).reduce((count, form) => {
@@ -142,6 +150,21 @@ export class FormFillaContent {
 		}
 
 		return this.handleFormFillRequest(profileData)
+	}
+
+	private async reviewAllFormsWithDefaultProfile(): Promise<FieldReviewItem[]> {
+		const profileData = await this.getDefaultProfileDataWithRetry()
+		if (!profileData) {
+			console.warn('FormFilla: No profile data received after retries')
+			return []
+		}
+
+		return this.reviewAllFormsOnPage(profileData)
+	}
+
+	private reviewAllFormsOnPage(profileData: ProfileData): FieldReviewItem[] {
+		const forms = document.querySelectorAll('form')
+		return Array.from(forms).flatMap(form => this.interactionManager.reviewFormWithProfile(form, profileData))
 	}
 
 	private async loadPageControlSettings(): Promise<void> {

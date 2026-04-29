@@ -292,6 +292,30 @@
 			color: var(--muted);
 		}
 
+		.issue-heading {
+			display: flex;
+			align-items: center;
+			justify-content: space-between;
+			gap: 8px;
+		}
+
+		.issue-badge {
+			display: inline-flex;
+			align-items: center;
+			justify-content: center;
+			padding: 3px 8px;
+			border-radius: 999px;
+			background: rgba(27, 42, 34, 0.08);
+			font-size: 11px;
+			font-weight: 700;
+			color: var(--ink);
+			white-space: nowrap;
+		}
+
+		.issue-meta {
+			font-size: 11px;
+		}
+
 		.issue-item.failed,
 		.issue-item.unavailable {
 			background: var(--danger-soft);
@@ -380,13 +404,16 @@
 			<h2>Autofill</h2>
 			<button class="primary-btn" id="autofill-page">Autofill Current Page</button>
 			<div class="secondary-actions">
+				<button class="secondary-btn" id="review-fields">Review Unresolved</button>
+			</div>
+			<div class="secondary-actions">
 				<button class="secondary-btn" id="refresh-status">Refresh Status</button>
 				<button class="secondary-btn" id="open-options">Open Options</button>
 			</div>
 		</section>
 
 		<section class="panel summary-panel" id="summary-panel" hidden>
-			<h2>Last Run</h2>
+			<h2 id="summary-title">Review Surface</h2>
 			<div id="summary-headline">No autofill run yet.</div>
 			<div class="summary-stats" id="summary-stats"></div>
 			<ul class="issue-list" id="summary-issues"></ul>

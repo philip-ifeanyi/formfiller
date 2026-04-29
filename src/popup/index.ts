@@ -3,11 +3,13 @@ import { StorageService } from '@/lib/storage'
 import {
 	type ContentCommandMessage,
 	type ContentResponseMessage,
+	type FieldReviewItem,
 	type FillFormResponseMessage,
 	type FillResult,
 	type GetFormFieldsResponseMessage,
 	type Profile,
 	type ProfileData,
+	type ReviewFieldsResponseMessage,
 	type RuntimeErrorResponse
 } from '@/types'
 
@@ -22,9 +24,11 @@ type PopupElements = {
 	activeProfileName: HTMLElement
 	activeProfileMeta: HTMLElement
 	autofillButton: HTMLButtonElement
+	reviewButton: HTMLButtonElement
 	refreshButton: HTMLButtonElement
 	openOptionsButton: HTMLButtonElement
 	summaryPanel: HTMLElement
+	summaryTitle: HTMLElement
 	summaryHeadline: HTMLElement
 	summaryStats: HTMLElement
 	summaryIssues: HTMLElement
@@ -41,6 +45,10 @@ function isGetFormFieldsResponse(response: ContentResponseMessage | null): respo
 
 function isFillFormResponse(response: ContentResponseMessage | null): response is FillFormResponseMessage {
 	return Boolean(response && 'results' in response)
+}
+
+function isReviewFieldsResponse(response: ContentResponseMessage | null): response is ReviewFieldsResponseMessage {
+	return Boolean(response && 'items' in response)
 }
 
 class PopupUI {
@@ -75,9 +83,11 @@ class PopupUI {
 			activeProfileName: document.getElementById('active-profile-name')!,
 			activeProfileMeta: document.getElementById('active-profile-meta')!,
 			autofillButton: document.getElementById('autofill-page') as HTMLButtonElement,
+			reviewButton: document.getElementById('review-fields') as HTMLButtonElement,
 			refreshButton: document.getElementById('refresh-status') as HTMLButtonElement,
 			openOptionsButton: document.getElementById('open-options') as HTMLButtonElement,
 			summaryPanel: document.getElementById('summary-panel')!,
+			summaryTitle: document.getElementById('summary-title')!,
 			summaryHeadline: document.getElementById('summary-headline')!,
 			summaryStats: document.getElementById('summary-stats')!,
 			summaryIssues: document.getElementById('summary-issues')!,
@@ -128,6 +138,9 @@ class PopupUI {
 		this.elements.autofillButton.addEventListener('click', () => {
 			void this.fillPageForms()
 		})
+		this.elements.reviewButton.addEventListener('click', () => {
+			void this.reviewPageFields()
+		})
 		this.elements.refreshButton.addEventListener('click', () => {
 			void this.refreshPageStatus()
 		})
@@ -150,6 +163,15 @@ class PopupUI {
 	private sendFillFormMessage(tabId: number, profileData: ProfileData): Promise<ContentResponseMessage | null> {
 		const message: ContentCommandMessage = {
 			type: 'fillForm',
+			profileData
+		}
+
+		return this.sendContentMessage(tabId, message)
+	}
+
+	private sendReviewFieldsMessage(tabId: number, profileData: ProfileData): Promise<ContentResponseMessage | null> {
+		const message: ContentCommandMessage = {
+			type: 'reviewFields',
 			profileData
 		}
 
@@ -217,6 +239,7 @@ class PopupUI {
 		this.elements.formCount.textContent = String(formCount)
 		this.elements.fieldCount.textContent = String(fieldCount)
 		this.elements.autofillButton.disabled = readiness !== 'ready' || !this.activeProfileId
+		this.elements.reviewButton.disabled = readiness !== 'ready' || !this.activeProfileId
 	}
 
 	private async handleProfileSelectionChange(): Promise<void> {
@@ -246,22 +269,57 @@ class PopupUI {
 		}
 
 		this.elements.autofillButton.disabled = true
+		this.elements.reviewButton.disabled = true
 		this.elements.autofillButton.textContent = 'Running autofill...'
 
 		const response = await this.sendFillFormMessage(tabId, activeProfile.data)
 		this.elements.autofillButton.textContent = 'Autofill Current Page'
 		this.elements.autofillButton.disabled = this.pageReadiness !== 'ready'
+		this.elements.reviewButton.disabled = this.pageReadiness !== 'ready'
 
 		if (!response || isErrorResponse(response)) {
-			this.renderSummary([])
+			this.renderRunSummary([])
 			this.showToast(response?.error || 'Autofill could not reach the current page.', 'error')
 			return
 		}
 
 		if (isFillFormResponse(response)) {
-			this.renderSummary(response.results)
+			this.renderRunSummary(response.results)
 			this.showToast('Autofill run completed')
 			await this.refreshPageStatus()
+		}
+	}
+
+	private async reviewPageFields(): Promise<void> {
+		const activeProfile = this.getActiveProfile()
+		if (!activeProfile) {
+			this.showToast('Select or create a profile before reviewing fields.', 'error')
+			return
+		}
+
+		const tabId = this.activeTabId ?? await this.getActiveTabId()
+		if (!tabId) {
+			this.showToast('No active tab is available for review.', 'error')
+			return
+		}
+
+		this.elements.reviewButton.disabled = true
+		this.elements.autofillButton.disabled = true
+		this.elements.reviewButton.textContent = 'Scanning fields...'
+
+		const response = await this.sendReviewFieldsMessage(tabId, activeProfile.data)
+		this.elements.reviewButton.textContent = 'Review Unresolved'
+		this.elements.reviewButton.disabled = this.pageReadiness !== 'ready'
+		this.elements.autofillButton.disabled = this.pageReadiness !== 'ready'
+
+		if (!response || isErrorResponse(response)) {
+			this.showToast(response?.error || 'Field review could not reach the current page.', 'error')
+			return
+		}
+
+		if (isReviewFieldsResponse(response)) {
+			this.renderReviewItems(response.items)
+			this.showToast(response.items.length > 0 ? 'Review surface updated' : 'No unresolved fields detected')
 		}
 	}
 
@@ -269,8 +327,9 @@ class PopupUI {
 		chrome.tabs.create({ url: chrome.runtime.getURL('src/options/index.html') })
 	}
 
-	private renderSummary(results: FillResult[]): void {
+	private renderRunSummary(results: FillResult[]): void {
 		this.elements.summaryPanel.hidden = false
+		this.elements.summaryTitle.textContent = 'Last Run'
 		const counts = {
 			filled: results.filter(result => result.status === 'filled').length,
 			review: results.filter(result => result.status === 'review').length,
@@ -316,11 +375,84 @@ class PopupUI {
 			return
 		}
 
-		unresolved.slice(0, 6).forEach(result => {
+		this.renderIssueItems(
+			unresolved
+				.map(result => result.review)
+				.filter((item): item is FieldReviewItem => Boolean(item))
+		)
+	}
+
+	private renderReviewItems(items: FieldReviewItem[]): void {
+		this.elements.summaryPanel.hidden = false
+		this.elements.summaryTitle.textContent = 'Review Surface'
+		this.elements.summaryHeadline.textContent = items.length > 0
+			? `${items.length} fields need review before autofill`
+			: 'No unresolved fields detected in the current scan'
+
+		this.elements.summaryStats.innerHTML = ''
+		const counts = {
+			review: items.filter(item => item.status === 'review').length,
+			skipped: items.filter(item => item.status === 'skipped').length,
+			failed: items.filter(item => item.status === 'failed').length,
+			previewed: items.filter(item => Boolean(item.selectedValuePreview)).length
+		}
+
+		;[
+			['Review', counts.review],
+			['Skipped', counts.skipped],
+			['Failed', counts.failed],
+			['Previewed', counts.previewed]
+		].forEach(([label, value]) => {
+			const stat = document.createElement('div')
+			stat.className = 'summary-stat'
+			stat.innerHTML = `<strong>${value}</strong><span>${label}</span>`
+			this.elements.summaryStats.appendChild(stat)
+		})
+
+		this.renderIssueItems(items)
+	}
+
+	private renderIssueItems(items: FieldReviewItem[]): void {
+		this.elements.summaryIssues.innerHTML = ''
+
+		if (items.length === 0) {
 			const item = document.createElement('li')
-			item.className = `issue-item ${result.status}`
-			const label = this.formatFieldKey(result.fieldKey)
-			item.innerHTML = `<strong>${label}</strong><span>${result.message || result.status}</span>`
+			item.className = 'issue-item success'
+			item.textContent = 'All unresolved-field checks came back clear.'
+			this.elements.summaryIssues.appendChild(item)
+			return
+		}
+
+		items.slice(0, 6).forEach(reviewItem => {
+			const item = document.createElement('li')
+			item.className = `issue-item ${reviewItem.status}`
+
+			const heading = document.createElement('div')
+			heading.className = 'issue-heading'
+
+			const label = document.createElement('strong')
+			label.textContent = reviewItem.label
+
+			const badge = document.createElement('span')
+			badge.className = 'issue-badge'
+			badge.textContent = `${this.formatConfidenceBand(reviewItem.confidenceBand)} · ${reviewItem.confidence.toFixed(2)}`
+
+			heading.append(label, badge)
+
+			const inference = document.createElement('span')
+			inference.className = 'issue-meta'
+			inference.textContent = `Inferred: ${this.formatReviewFieldKey(reviewItem.fieldKey)}`
+
+			const preview = document.createElement('span')
+			preview.className = 'issue-meta'
+			preview.textContent = reviewItem.selectedValuePreview
+				? `Value preview: ${reviewItem.selectedValuePreview}`
+				: 'Value preview unavailable for the active profile'
+
+			const message = document.createElement('span')
+			message.textContent = reviewItem.message
+
+			item.append(heading, inference, preview, message)
 			this.elements.summaryIssues.appendChild(item)
 		})
 	}
@@ -331,6 +463,20 @@ class PopupUI {
 		return label
 			.replace(/([a-z\d])([A-Z])/g, '$1 $2')
 			.replace(/[-_]+/g, ' ')
+			.replace(/\b\w/g, character => character.toUpperCase())
+	}
+
+	private formatReviewFieldKey(fieldKey: string): string {
+		if (fieldKey.startsWith('custom.unresolved')) {
+			return 'Unresolved'
+		}
+
+		return this.formatFieldKey(fieldKey)
+	}
+
+	private formatConfidenceBand(confidenceBand: string): string {
+		return confidenceBand
+			.replace(/-/g, ' ')
 			.replace(/\b\w/g, character => character.toUpperCase())
 	}
 

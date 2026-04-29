@@ -270,6 +270,17 @@ export interface FillInstruction {
 	retryPolicy: FillRetryPolicy
 }
 
+export interface FieldReviewItem {
+	candidateId: string
+	fieldKey: CanonicalFieldKey
+	label: string
+	status: Exclude<FillResultStatus, 'filled'>
+	confidence: number
+	confidenceBand: FieldInferenceStatus
+	selectedValuePreview?: string
+	message: string
+}
+
 export interface FillResult {
 	candidateId: string
 	fieldKey: CanonicalFieldKey
@@ -278,6 +289,7 @@ export interface FillResult {
 	appliedValue?: string
 	verified: boolean
 	message?: string
+	review?: FieldReviewItem
 }
 
 export type LegacyFieldPath = `${string}.${string}`
@@ -350,6 +362,7 @@ export type BackgroundResponseMessage =
 
 export const CONTENT_COMMAND_TYPES = [
 	'fillForm',
+	'reviewFields',
 	'fillField',
 	'getFormFields',
 	'highlightField'
@@ -365,6 +378,11 @@ export interface FillFieldCommandMessage {
 	value: string
 }
 
+export interface ReviewFieldsCommandMessage {
+	type: 'reviewFields'
+	profileData?: ProfileData
+}
+
 export interface GetFormFieldsCommandMessage {
 	type: 'getFormFields'
 }
@@ -376,6 +394,7 @@ export interface HighlightFieldCommandMessage {
 
 export type ContentCommandMessage =
 	| FillFormCommandMessage
+	| ReviewFieldsCommandMessage
 	| FillFieldCommandMessage
 	| GetFormFieldsCommandMessage
 	| HighlightFieldCommandMessage
@@ -389,10 +408,15 @@ export interface FillFormResponseMessage extends RuntimeSuccessResponse {
 	results: FillResult[]
 }
 
+export interface ReviewFieldsResponseMessage extends RuntimeSuccessResponse {
+	items: FieldReviewItem[]
+}
+
 export type ContentResponseMessage =
 	| RuntimeSuccessResponse
 	| RuntimeErrorResponse
 	| GetFormFieldsResponseMessage
+	| ReviewFieldsResponseMessage
 	| FillFormResponseMessage
 
 /**

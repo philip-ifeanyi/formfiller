@@ -7,6 +7,7 @@ import {
 	type FieldControlKind,
 	type FieldInference,
 	type FieldInfo,
+	type FieldReviewItem,
 	type FillInstruction,
 	type FillResult,
 	type FillRetryPolicy,
@@ -424,6 +425,25 @@ export class InteractionManager {
 		}
 	}
 
+	public reviewFormWithProfile(form: HTMLFormElement, profileData: ProfileData): FieldReviewItem[] {
+		const snapshot = this.fieldDetector.collectFormSnapshot(form)
+		const reviewItemsByFingerprint = new Map<string, FieldReviewItem>()
+
+		for (const candidate of snapshot.candidates) {
+			const plannedFill = this.planFieldFill(candidate, profileData, DEFAULT_FILL_RETRY_POLICY)
+			if (!plannedFill.result?.review) {
+				continue
+			}
+
+			reviewItemsByFingerprint.set(
+				this.getPlannedFillFingerprint(plannedFill),
+				plannedFill.result.review
+			)
+		}
+
+		return Array.from(reviewItemsByFingerprint.values())
+	}
+
 	private startFillSession(form: HTMLFormElement, profileData: ProfileData): FormFillSession {
 		const existingSession = this.fillSessions.get(form)
 		if (existingSession) {
@@ -530,19 +550,29 @@ export class InteractionManager {
 		attemptNumber: number
 	): Promise<FillResult> {
 		if (!plannedFill.candidate.element.isConnected) {
-			return this.createBlockedFillResult(
-				plannedFill.instruction.candidateId,
-				plannedFill.instruction.fieldKey,
-				'failed',
-				plannedFill.instruction.adapterId,
-				`Field detached before fill attempt ${attemptNumber}`
+			return this.enrichFillResult(
+				plannedFill.candidate,
+				plannedFill.inference,
+				session.profileData,
+				this.createBlockedFillResult(
+					plannedFill.instruction.candidateId,
+					plannedFill.instruction.fieldKey,
+					'failed',
+					plannedFill.instruction.adapterId,
+					`Field detached before fill attempt ${attemptNumber}`
+				)
 			)
 		}
 
-		const executionResult = await this.executeFillInstruction(
+		const executionResult = this.enrichFillResult(
+			plannedFill.candidate,
+			plannedFill.inference,
+			session.profileData,
+			await this.executeFillInstruction(
 			plannedFill.candidate.element,
 			plannedFill.candidate.controlKind,
 			plannedFill.instruction
+			)
 		)
 
 		if (executionResult.status !== 'filled') {
@@ -551,25 +581,35 @@ export class InteractionManager {
 
 		const observedMutation = await this.waitForRetrySignal(session, SETTLEMENT_RETRY_POLICY, 1)
 		if (session.cancelled) {
-			return this.createBlockedFillResult(
-				plannedFill.instruction.candidateId,
-				plannedFill.instruction.fieldKey,
-				'failed',
-				plannedFill.instruction.adapterId,
-				'Fill was cancelled before verification completed'
+			return this.enrichFillResult(
+				plannedFill.candidate,
+				plannedFill.inference,
+				session.profileData,
+				this.createBlockedFillResult(
+					plannedFill.instruction.candidateId,
+					plannedFill.instruction.fieldKey,
+					'failed',
+					plannedFill.instruction.adapterId,
+					'Fill was cancelled before verification completed'
+				)
 			)
 		}
 
 		const refreshedFill = this.findRetryCandidate(session.form, session.profileData, plannedFill)
 		if (!refreshedFill || !refreshedFill.instruction) {
-			return this.createBlockedFillResult(
-				plannedFill.instruction.candidateId,
-				plannedFill.instruction.fieldKey,
-				'failed',
-				plannedFill.instruction.adapterId,
-				observedMutation
-					? 'Field detached after a dynamic re-render before verification completed'
-					: 'Post-fill verification could not confirm the field after settlement'
+			return this.enrichFillResult(
+				plannedFill.candidate,
+				plannedFill.inference,
+				session.profileData,
+				this.createBlockedFillResult(
+					plannedFill.instruction.candidateId,
+					plannedFill.instruction.fieldKey,
+					'failed',
+					plannedFill.instruction.adapterId,
+					observedMutation
+						? 'Field detached after a dynamic re-render before verification completed'
+						: 'Post-fill verification could not confirm the field after settlement'
+				)
 			)
 		}
 
@@ -580,24 +620,34 @@ export class InteractionManager {
 		)
 
 		if (persisted) {
-			return {
+			return this.enrichFillResult(
+				refreshedFill.candidate,
+				refreshedFill.inference,
+				session.profileData,
+				{
 				...executionResult,
 				candidateId: refreshedFill.instruction.candidateId,
 				appliedValue: refreshedFill.instruction.normalizedValue,
 				message: observedMutation
 					? 'Filled successfully after a dynamic re-render'
 					: executionResult.message
-			}
+				}
+			)
 		}
 
-		return this.createBlockedFillResult(
-			plannedFill.instruction.candidateId,
-			plannedFill.instruction.fieldKey,
-			'failed',
-			plannedFill.instruction.adapterId,
-			observedMutation
-				? 'Post-fill value was reset after a dynamic re-render'
-				: 'Post-fill value did not persist after the verification window'
+		return this.enrichFillResult(
+			plannedFill.candidate,
+			plannedFill.inference,
+			session.profileData,
+			this.createBlockedFillResult(
+				plannedFill.instruction.candidateId,
+				plannedFill.instruction.fieldKey,
+				'failed',
+				plannedFill.instruction.adapterId,
+				observedMutation
+					? 'Post-fill value was reset after a dynamic re-render'
+					: 'Post-fill value did not persist after the verification window'
+			)
 		)
 	}
 
@@ -742,12 +792,17 @@ export class InteractionManager {
 			return {
 				candidate,
 				inference,
-				result: this.createBlockedFillResult(
-					candidate.id,
-					resultFieldKey,
-					'review',
-					'native.none',
-					inference.reasons.join('; ') || 'Requires manual review before filling'
+				result: this.enrichFillResult(
+					candidate,
+					inference,
+					profileData,
+					this.createBlockedFillResult(
+						candidate.id,
+						resultFieldKey,
+						'review',
+						'native.none',
+						inference.reasons.join('; ') || 'Requires manual review before filling'
+					)
 				)
 			}
 		}
@@ -756,12 +811,17 @@ export class InteractionManager {
 			return {
 				candidate,
 				inference,
-				result: this.createBlockedFillResult(
-					candidate.id,
-					resultFieldKey,
-					'skipped',
-					'native.none',
-					inference.reasons.join('; ') || 'Skipped because the field inference was not actionable'
+				result: this.enrichFillResult(
+					candidate,
+					inference,
+					profileData,
+					this.createBlockedFillResult(
+						candidate.id,
+						resultFieldKey,
+						'skipped',
+						'native.none',
+						inference.reasons.join('; ') || 'Skipped because the field inference was not actionable'
+					)
 				)
 			}
 		}
@@ -771,12 +831,17 @@ export class InteractionManager {
 			return {
 				candidate,
 				inference,
-				result: this.createBlockedFillResult(
-					candidate.id,
-					inference.fieldKey,
-					'skipped',
-					'native.none',
-					`Skipped because no profile path is registered for ${inference.fieldKey}`
+				result: this.enrichFillResult(
+					candidate,
+					inference,
+					profileData,
+					this.createBlockedFillResult(
+						candidate.id,
+						inference.fieldKey,
+						'skipped',
+						'native.none',
+						`Skipped because no profile path is registered for ${inference.fieldKey}`
+					)
 				)
 			}
 		}
@@ -786,12 +851,17 @@ export class InteractionManager {
 			return {
 				candidate,
 				inference,
-				result: this.createBlockedFillResult(
-					candidate.id,
-					inference.fieldKey,
-					'skipped',
-					'native.unsupported',
-					`Skipped because ${candidate.controlKind} controls do not have a native adapter yet`
+				result: this.enrichFillResult(
+					candidate,
+					inference,
+					profileData,
+					this.createBlockedFillResult(
+						candidate.id,
+						inference.fieldKey,
+						'skipped',
+						'native.unsupported',
+						`Skipped because ${candidate.controlKind} controls do not have a native adapter yet`
+					)
 				)
 			}
 		}
@@ -807,12 +877,17 @@ export class InteractionManager {
 			return {
 				candidate,
 				inference,
-				result: this.createBlockedFillResult(
-					candidate.id,
-					inference.fieldKey,
-					'skipped',
-					adapter.id,
-					`Skipped because no fillable profile value was found at ${resolvedValue.profilePath}`
+				result: this.enrichFillResult(
+					candidate,
+					inference,
+					profileData,
+					this.createBlockedFillResult(
+						candidate.id,
+						inference.fieldKey,
+						'skipped',
+						adapter.id,
+						`Skipped because no fillable profile value was found at ${resolvedValue.profilePath}`
+					)
 				)
 			}
 		}
@@ -835,6 +910,91 @@ export class InteractionManager {
 
 	private getResultFieldKey(candidate: FieldCandidate, inference: FieldInference): CanonicalFieldKey {
 		return inference.fieldKey || inference.alternatives[0]?.fieldKey || `${UNRESOLVED_FIELD_KEY}.${candidate.id}` as CanonicalFieldKey
+	}
+
+	private enrichFillResult(
+		candidate: FieldCandidate,
+		inference: FieldInference,
+		profileData: ProfileData,
+		result: FillResult
+	): FillResult {
+		if (result.status === 'filled') {
+			return {
+				...result,
+				review: this.createReviewItem(candidate, inference, profileData, result.status, result.message || 'Filled successfully')
+			}
+		}
+
+		return {
+			...result,
+			review: this.createReviewItem(candidate, inference, profileData, result.status, result.message || result.status)
+		}
+	}
+
+	private createReviewItem(
+		candidate: FieldCandidate,
+		inference: FieldInference,
+		profileData: ProfileData,
+		status: FillResult['status'],
+		message: string
+	): FieldReviewItem {
+		const resultFieldKey = this.getResultFieldKey(candidate, inference)
+		const label = this.getCandidateReviewLabel(candidate)
+		return {
+			candidateId: candidate.id,
+			fieldKey: resultFieldKey,
+			label,
+			status: status === 'filled' ? 'review' : status,
+			confidence: inference.confidence,
+			confidenceBand: inference.status,
+			selectedValuePreview: this.getSelectedValuePreview(resultFieldKey, profileData),
+			message
+		}
+	}
+
+	private getCandidateReviewLabel(candidate: FieldCandidate): string {
+		const fallback = [candidate.attributes.name, candidate.attributes.id, candidate.placeholder]
+			.find(value => typeof value === 'string' && value.trim().length > 0)
+
+		return candidate.labelText?.trim() || fallback?.trim() || 'Unlabeled field'
+	}
+
+	private getSelectedValuePreview(fieldKey: CanonicalFieldKey, profileData: ProfileData): string | undefined {
+		const resolvedValue = resolveProfileValueForFieldKey(profileData, fieldKey)
+		if (!resolvedValue) {
+			return undefined
+		}
+
+		const rawValue = String(resolvedValue.rawValue ?? '').trim()
+		if (!rawValue) {
+			return undefined
+		}
+
+		const normalizedFieldKey = fieldKey.toLowerCase()
+		if (normalizedFieldKey.includes('password') || normalizedFieldKey.includes('cvv')) {
+			return 'Hidden for safety'
+		}
+
+		if (normalizedFieldKey.includes('cardnumber')) {
+			return rawValue.length > 4
+				? `•••• ${rawValue.slice(-4)}`
+				: 'Card value available'
+		}
+
+		if (
+			normalizedFieldKey.includes('ssn') ||
+			normalizedFieldKey.includes('nationalid') ||
+			normalizedFieldKey.includes('passport')
+		) {
+			return rawValue.length > 2
+				? `${'•'.repeat(Math.max(rawValue.length - 2, 2))}${rawValue.slice(-2)}`
+				: 'Sensitive value available'
+		}
+
+		const sanitizedValue = sanitizeFieldValue(rawValue)
+		return sanitizedValue.length > 36
+			? `${sanitizedValue.slice(0, 33)}...`
+			: sanitizedValue
 	}
 
 	private createBlockedFillResult(
