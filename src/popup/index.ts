@@ -1,248 +1,267 @@
-import { StorageService } from '@/lib/storage'
 import { ProfileManager } from '@/lib/profiles'
-import { DummyDataProvider } from '@/lib/dummy-data'
-import { type ContentCommandMessage, type ProfileData } from '@/types'
+import { StorageService } from '@/lib/storage'
+import {
+	type ContentCommandMessage,
+	type ContentResponseMessage,
+	type FillFormResponseMessage,
+	type FillResult,
+	type GetFormFieldsResponseMessage,
+	type Profile,
+	type ProfileData,
+	type RuntimeErrorResponse
+} from '@/types'
+
+type PageReadiness = 'loading' | 'ready' | 'empty' | 'unavailable'
+
+type PopupElements = {
+	pageStatusPill: HTMLElement
+	pageStatusDetail: HTMLElement
+	formCount: HTMLElement
+	fieldCount: HTMLElement
+	profileSelect: HTMLSelectElement
+	activeProfileName: HTMLElement
+	activeProfileMeta: HTMLElement
+	autofillButton: HTMLButtonElement
+	refreshButton: HTMLButtonElement
+	openOptionsButton: HTMLButtonElement
+	summaryPanel: HTMLElement
+	summaryHeadline: HTMLElement
+	summaryStats: HTMLElement
+	summaryIssues: HTMLElement
+	toast: HTMLElement
+}
+
+function isErrorResponse(response: ContentResponseMessage | null): response is RuntimeErrorResponse {
+	return Boolean(response && 'error' in response)
+}
+
+function isGetFormFieldsResponse(response: ContentResponseMessage | null): response is GetFormFieldsResponseMessage {
+	return Boolean(response && 'formCount' in response && 'fieldCount' in response)
+}
+
+function isFillFormResponse(response: ContentResponseMessage | null): response is FillFormResponseMessage {
+	return Boolean(response && 'results' in response)
+}
 
 class PopupUI {
-	private storage: StorageService
 	private profileManager: ProfileManager
-	private dummyData: DummyDataProvider
+	private elements: PopupElements
+	private profiles: Profile[] = []
+	private activeProfileId = ''
+	private activeTabId: number | null = null
+	private pageReadiness: PageReadiness = 'loading'
 
 	constructor() {
-		this.storage = StorageService.getInstance()
-		this.profileManager = new ProfileManager(this.storage)
-		this.dummyData = new DummyDataProvider()
-		this.initialize()
+		const storage = StorageService.getInstance()
+		this.profileManager = new ProfileManager(storage)
+		this.elements = this.getElements()
+		void this.initialize()
 	}
 
 	private async initialize(): Promise<void> {
+		this.renderPageStatus('loading', 'Checking the active page for injectable forms.', 0, 0)
 		await this.loadProfiles()
-		await this.loadDummyProfiles()
+		await this.refreshPageStatus()
 		this.setupEventListeners()
 	}
 
-	private async loadProfiles(): Promise<void> {
-		const profiles = await this.profileManager.getAllProfiles()
-		const profilesList = document.getElementById('profiles-list')!
-
-		if (profiles.length === 0) {
-			const emptyDiv = document.createElement('div')
-			emptyDiv.className = 'empty-state'
-
-			const p1 = document.createElement('p')
-			p1.textContent = 'No profiles created yet'
-
-			const p2 = document.createElement('p')
-			p2.textContent = 'Create your first profile or use sample data below'
-
-			emptyDiv.appendChild(p1)
-			emptyDiv.appendChild(p2)
-			profilesList.appendChild(emptyDiv)
-		} else {
-			// Clear existing content
-			profilesList.innerHTML = ''
-
-			profiles.forEach(profile => {
-				const profileDiv = document.createElement('div')
-				profileDiv.className = `profile-item ${profile.isDefault ? 'default' : ''}`
-				profileDiv.dataset.id = profile.id
-
-				const nameSpan = document.createElement('span')
-				nameSpan.className = 'profile-name'
-				nameSpan.textContent = profile.name
-				profileDiv.appendChild(nameSpan)
-
-				if (profile.isDefault) {
-					const badgeSpan = document.createElement('span')
-					badgeSpan.className = 'profile-badge'
-					badgeSpan.textContent = 'Default'
-					profileDiv.appendChild(badgeSpan)
-				}
-
-				profilesList.appendChild(profileDiv)
-			})
-
-			// Add click handlers for profiles
-			profilesList.addEventListener('click', this.handleProfileClick.bind(this))
+	private getElements(): PopupElements {
+		return {
+			pageStatusPill: document.getElementById('page-status-pill')!,
+			pageStatusDetail: document.getElementById('page-status-detail')!,
+			formCount: document.getElementById('form-count')!,
+			fieldCount: document.getElementById('field-count')!,
+			profileSelect: document.getElementById('profile-select') as HTMLSelectElement,
+			activeProfileName: document.getElementById('active-profile-name')!,
+			activeProfileMeta: document.getElementById('active-profile-meta')!,
+			autofillButton: document.getElementById('autofill-page') as HTMLButtonElement,
+			refreshButton: document.getElementById('refresh-status') as HTMLButtonElement,
+			openOptionsButton: document.getElementById('open-options') as HTMLButtonElement,
+			summaryPanel: document.getElementById('summary-panel')!,
+			summaryHeadline: document.getElementById('summary-headline')!,
+			summaryStats: document.getElementById('summary-stats')!,
+			summaryIssues: document.getElementById('summary-issues')!,
+			toast: document.getElementById('toast')!
 		}
 	}
 
-	private async loadDummyProfiles(): Promise<void> {
-		const dummySection = document.getElementById('dummy-profiles')!
-		const profileNames = this.dummyData.getProfileNames()
+	private async loadProfiles(): Promise<void> {
+		this.profiles = await this.profileManager.getAllProfiles()
+		const defaultProfile = await this.profileManager.getDefaultProfile()
+		this.activeProfileId = defaultProfile?.id || this.profiles[0]?.id || ''
+		this.renderProfiles()
+	}
 
-		// Clear existing content
-		dummySection.innerHTML = ''
+	private renderProfiles(): void {
+		const { profileSelect, activeProfileName, activeProfileMeta } = this.elements
+		profileSelect.innerHTML = ''
 
-		// Create header
-		const header = document.createElement('h2')
-		header.textContent = 'Sample Data'
-		dummySection.appendChild(header)
+		if (this.profiles.length === 0) {
+			const option = document.createElement('option')
+			option.value = ''
+			option.textContent = 'No profiles available'
+			profileSelect.appendChild(option)
+			profileSelect.disabled = true
+			activeProfileName.textContent = 'No active profile'
+			activeProfileMeta.textContent = 'Open the profile manager to create or import a profile before autofilling.'
+			this.elements.autofillButton.disabled = true
+			return
+		}
 
-		// Create dummy profile elements
-		profileNames.forEach(name => {
-			const displayName = this.getDummyDisplayName(name)
-
-			const profileDiv = document.createElement('div')
-			profileDiv.className = 'dummy-profile'
-			profileDiv.dataset.name = name
-
-			const nameSpan = document.createElement('span')
-			nameSpan.textContent = displayName
-			profileDiv.appendChild(nameSpan)
-
-			const useButton = document.createElement('button')
-			useButton.textContent = 'Use'
-			useButton.dataset.action = `use-${name}`
-			useButton.addEventListener('click', (event) => {
-				event.stopPropagation()
-			})
-			profileDiv.appendChild(useButton)
-
-			dummySection.appendChild(profileDiv)
+		profileSelect.disabled = false
+		this.profiles.forEach(profile => {
+			const option = document.createElement('option')
+			option.value = profile.id
+			option.textContent = profile.isDefault ? `${profile.name} · active` : profile.name
+			option.selected = profile.id === this.activeProfileId
+			profileSelect.appendChild(option)
 		})
 
-		// Add click handlers
-		dummySection.addEventListener('click', this.handleDummyClick.bind(this))
-	}
-
-	private getDummyDisplayName(name: string): string {
-		const displayNames: Record<string, string> = {
-			developer: '👨‍💻 Developer Profile',
-			international: '🌍 International Profile',
-			edgeCases: '⚠️ Edge Cases Profile',
-			tester: '🧪 QA Tester Profile'
-		}
-		return displayNames[name] || name
+		const activeProfile = this.getActiveProfile()
+		activeProfileName.textContent = activeProfile?.name || 'No active profile'
+		activeProfileMeta.textContent = activeProfile
+			? `${this.profiles.length} saved profiles available. Autofill uses this profile unless you switch it below.`
+			: 'Open the profile manager to create or import a profile before autofilling.'
 	}
 
 	private setupEventListeners(): void {
-		// Quick actions
-		document.getElementById('fill-page')?.addEventListener('click', this.fillPageForms.bind(this))
-		document.getElementById('random-data')?.addEventListener('click', this.fillWithRandomData.bind(this))
-
-		// Create profile
-		document.getElementById('create-profile')?.addEventListener('click', this.createNewProfile.bind(this))
-
-		// Footer links
-		document.getElementById('settings-link')?.addEventListener('click', this.openSettings.bind(this))
-		document.getElementById('help-link')?.addEventListener('click', this.openHelp.bind(this))
+		this.elements.autofillButton.addEventListener('click', () => {
+			void this.fillPageForms()
+		})
+		this.elements.refreshButton.addEventListener('click', () => {
+			void this.refreshPageStatus()
+		})
+		this.elements.openOptionsButton.addEventListener('click', this.openSettings.bind(this))
+		this.elements.profileSelect.addEventListener('change', () => {
+			void this.handleProfileSelectionChange()
+		})
 	}
 
-	private sendFillFormMessage(tabId: number, profileData: ProfileData): void {
+	private getActiveProfile(): Profile | undefined {
+		return this.profiles.find(profile => profile.id === this.activeProfileId)
+	}
+
+	private async getActiveTabId(): Promise<number | null> {
+		const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
+		this.activeTabId = tab?.id ?? null
+		return this.activeTabId
+	}
+
+	private sendFillFormMessage(tabId: number, profileData: ProfileData): Promise<ContentResponseMessage | null> {
 		const message: ContentCommandMessage = {
 			type: 'fillForm',
 			profileData
 		}
 
-		chrome.tabs.sendMessage(tabId, message)
+		return this.sendContentMessage(tabId, message)
 	}
 
-	private async handleProfileClick(event: Event): Promise<void> {
-		const target = event.target as HTMLElement
-		const profileItem = target.closest('.profile-item') as HTMLElement
+	private async sendContentMessage(tabId: number, message: ContentCommandMessage): Promise<ContentResponseMessage | null> {
+		return new Promise((resolve) => {
+			try {
+				chrome.tabs.sendMessage(tabId, message, response => {
+					if (chrome.runtime.lastError) {
+						resolve({ error: chrome.runtime.lastError.message || 'Unable to contact the page' })
+						return
+					}
 
-		if (profileItem) {
-			const profileId = profileItem.dataset.id!
-			await this.useProfile(profileId)
-			window.close()
-		}
-	}
-
-	private async handleDummyClick(event: Event): Promise<void> {
-		const target = event.target as HTMLElement
-		const dummyProfile = target.closest('.dummy-profile') as HTMLElement
-
-		if (dummyProfile) {
-			const profileName = dummyProfile.dataset.name!
-
-			if (target.tagName === 'BUTTON') {
-				// "Use" button clicked - fill forms
-				await this.useDummyProfile(profileName)
-				window.close()
-			} else {
-				// Profile clicked - create custom profile from dummy
-				await this.createFromDummy(profileName)
+					resolve((response ?? null) as ContentResponseMessage | null)
+				})
+			} catch (error) {
+				resolve({ error: error instanceof Error ? error.message : 'Unable to contact the page' })
 			}
+		})
+	}
+
+	private async refreshPageStatus(): Promise<void> {
+		const tabId = await this.getActiveTabId()
+		if (!tabId) {
+			this.renderPageStatus('unavailable', 'No active tab is available for autofill.', 0, 0)
+			return
 		}
+
+		const response = await this.sendContentMessage(tabId, { type: 'getFormFields' })
+		if (!response || isErrorResponse(response)) {
+			this.renderPageStatus(
+				'unavailable',
+				'FormFilla cannot inspect this page yet. Reload the tab or make sure the content script can run here.',
+				0,
+				0
+			)
+			return
+		}
+
+		if (!isGetFormFieldsResponse(response)) {
+			this.renderPageStatus('unavailable', 'Unexpected page status response.', 0, 0)
+			return
+		}
+
+		const readiness: PageReadiness = response.formCount > 0 ? 'ready' : 'empty'
+		const detail = readiness === 'ready'
+			? 'The current page is ready for a one-click autofill run.'
+			: 'The current page has no detectable forms yet.'
+
+		this.renderPageStatus(readiness, detail, response.formCount, response.fieldCount)
+	}
+
+	private renderPageStatus(readiness: PageReadiness, detail: string, formCount: number, fieldCount: number): void {
+		this.pageReadiness = readiness
+		this.elements.pageStatusPill.textContent = {
+			loading: 'Checking page',
+			ready: 'Ready to fill',
+			empty: 'No forms detected',
+			unavailable: 'Page unavailable'
+		}[readiness]
+		this.elements.pageStatusPill.className = `status-pill ${readiness}`
+		this.elements.pageStatusDetail.textContent = detail
+		this.elements.formCount.textContent = String(formCount)
+		this.elements.fieldCount.textContent = String(fieldCount)
+		this.elements.autofillButton.disabled = readiness !== 'ready' || !this.activeProfileId
+	}
+
+	private async handleProfileSelectionChange(): Promise<void> {
+		const selectedProfileId = this.elements.profileSelect.value
+		if (!selectedProfileId || selectedProfileId === this.activeProfileId) {
+			return
+		}
+
+		await this.profileManager.setDefaultProfile(selectedProfileId)
+		this.activeProfileId = selectedProfileId
+		this.profiles = await this.profileManager.getAllProfiles()
+		this.renderProfiles()
+		this.showToast('Active profile updated')
 	}
 
 	private async fillPageForms(): Promise<void> {
-		const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
-		if (!tab.id) return
-
-		try {
-			// Get default profile data directly
-			const defaultProfile = await this.profileManager.getDefaultProfile()
-			const profileData = defaultProfile ? defaultProfile.data : this.dummyData.getRandomProfile()
-
-			if (profileData) {
-				this.sendFillFormMessage(tab.id, profileData)
-			}
-		} catch (error) {
-			console.error('Error getting profile data:', error)
-			// Fallback to random data
-			const randomProfile = this.dummyData.getRandomProfile()
-			if (randomProfile) {
-				this.sendFillFormMessage(tab.id, randomProfile)
-			}
+		const activeProfile = this.getActiveProfile()
+		if (!activeProfile) {
+			this.showToast('Select or create a profile before autofilling.', 'error')
+			return
 		}
 
-		window.close()
-	}
-
-	private async fillWithRandomData(): Promise<void> {
-		const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
-		if (!tab.id) return
-
-		const randomProfile = this.dummyData.getRandomProfile()
-		if (randomProfile) {
-			this.sendFillFormMessage(tab.id, randomProfile)
+		const tabId = this.activeTabId ?? await this.getActiveTabId()
+		if (!tabId) {
+			this.showToast('No active tab is available for autofill.', 'error')
+			return
 		}
-		window.close()
-	}
 
-	private async useProfile(profileId: string): Promise<void> {
-		const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
-		if (!tab.id) return
+		this.elements.autofillButton.disabled = true
+		this.elements.autofillButton.textContent = 'Running autofill...'
 
-		const profile = await this.profileManager.getProfile(profileId)
-		if (profile) {
-			this.sendFillFormMessage(tab.id, profile.data)
+		const response = await this.sendFillFormMessage(tabId, activeProfile.data)
+		this.elements.autofillButton.textContent = 'Autofill Current Page'
+		this.elements.autofillButton.disabled = this.pageReadiness !== 'ready'
+
+		if (!response || isErrorResponse(response)) {
+			this.renderSummary([])
+			this.showToast(response?.error || 'Autofill could not reach the current page.', 'error')
+			return
 		}
-	}
 
-	private async useDummyProfile(profileName: string): Promise<void> {
-		const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
-		if (!tab.id) return
-
-		const profileData = this.dummyData.getProfile(profileName)
-		if (profileData) {
-			this.sendFillFormMessage(tab.id, profileData)
-		}
-	}
-
-	private async createNewProfile(): Promise<void> {
-		chrome.tabs.create({ url: chrome.runtime.getURL('src/options/index.html') })
-	}
-
-	private async createFromDummy(profileName: string): Promise<void> {
-		const dummyProfile = this.dummyData.getProfile(profileName)
-		if (!dummyProfile) return
-
-		try {
-			await this.profileManager.createProfile({
-				name: `My ${this.getDummyDisplayName(profileName)}`,
-				isDefault: false,
-				data: dummyProfile
-			})
-
-			await this.loadProfiles()
-
-			// Show success feedback
-			this.showNotification('Profile created successfully!')
-		} catch (error) {
-			this.showNotification('Failed to create profile', 'error')
+		if (isFillFormResponse(response)) {
+			this.renderSummary(response.results)
+			this.showToast('Autofill run completed')
+			await this.refreshPageStatus()
 		}
 	}
 
@@ -250,30 +269,79 @@ class PopupUI {
 		chrome.tabs.create({ url: chrome.runtime.getURL('src/options/index.html') })
 	}
 
-	private openHelp(): void {
-		chrome.tabs.create({ url: 'https://github.com/your-repo/formfilla#readme' })
+	private renderSummary(results: FillResult[]): void {
+		this.elements.summaryPanel.hidden = false
+		const counts = {
+			filled: results.filter(result => result.status === 'filled').length,
+			review: results.filter(result => result.status === 'review').length,
+			skipped: results.filter(result => result.status === 'skipped').length,
+			failed: results.filter(result => result.status === 'failed').length
+		}
+
+		const total = results.length
+		this.elements.summaryHeadline.textContent = total > 0
+			? `${counts.filled} of ${total} fields filled`
+			: 'No fields were filled'
+
+		this.elements.summaryStats.innerHTML = ''
+		;
+		[
+			['Filled', counts.filled],
+			['Review', counts.review],
+			['Skipped', counts.skipped],
+			['Failed', counts.failed]
+		].forEach(([label, value]) => {
+			const stat = document.createElement('div')
+			stat.className = 'summary-stat'
+			stat.innerHTML = `<strong>${value}</strong><span>${label}</span>`
+			this.elements.summaryStats.appendChild(stat)
+		})
+
+		const unresolved = results.filter(result => result.status !== 'filled')
+		this.elements.summaryIssues.innerHTML = ''
+
+		if (unresolved.length === 0 && total > 0) {
+			const item = document.createElement('li')
+			item.className = 'issue-item success'
+			item.textContent = 'All actionable fields filled successfully.'
+			this.elements.summaryIssues.appendChild(item)
+			return
+		}
+
+		if (unresolved.length === 0) {
+			const item = document.createElement('li')
+			item.className = 'issue-item neutral'
+			item.textContent = 'The page responded, but there were no actionable fields in this run.'
+			this.elements.summaryIssues.appendChild(item)
+			return
+		}
+
+		unresolved.slice(0, 6).forEach(result => {
+			const item = document.createElement('li')
+			item.className = `issue-item ${result.status}`
+			const label = this.formatFieldKey(result.fieldKey)
+			item.innerHTML = `<strong>${label}</strong><span>${result.message || result.status}</span>`
+			this.elements.summaryIssues.appendChild(item)
+		})
 	}
 
-	private showNotification(message: string, type: 'success' | 'error' = 'success'): void {
-		// Simple notification - could be enhanced with a toast system
-		const notification = document.createElement('div')
-		notification.style.cssText = `
-      position: fixed;
-      top: 10px;
-      right: 10px;
-      padding: 8px 12px;
-      background: ${type === 'success' ? '#4CAF50' : '#f44336'};
-      color: white;
-      border-radius: 4px;
-      font-size: 12px;
-      z-index: 10000;
-    `
-		notification.textContent = message
-		document.body.appendChild(notification)
+	private formatFieldKey(fieldKey: string): string {
+		const segments = fieldKey.split('.')
+		const label = segments[segments.length - 1] || fieldKey
+		return label
+			.replace(/([a-z\d])([A-Z])/g, '$1 $2')
+			.replace(/[-_]+/g, ' ')
+			.replace(/\b\w/g, character => character.toUpperCase())
+	}
 
-		setTimeout(() => {
-			notification.remove()
-		}, 3000)
+	private showToast(message: string, type: 'success' | 'error' = 'success'): void {
+		this.elements.toast.textContent = message
+		this.elements.toast.className = `toast ${type}`
+		this.elements.toast.hidden = false
+
+		window.setTimeout(() => {
+			this.elements.toast.hidden = true
+		}, 2500)
 	}
 }
 

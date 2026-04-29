@@ -7,6 +7,7 @@ import {
 	type ContentCommandMessage,
 	type ContentResponseMessage,
 	type FieldInfo,
+	type FillResult,
 	type ProfileData
 } from '../types'
 import { validateMessage } from '../lib/security'
@@ -42,12 +43,12 @@ export class FormFillaContent {
 
 		// Set up message listener for background script communication
 		chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-			this.handleMessage(message, sender, sendResponse)
+			void this.handleMessage(message, sender, sendResponse)
 			return true // Keep the message channel open for async responses
 		})
 	}
 
-	private handleMessage(message: unknown, sender: chrome.runtime.MessageSender, sendResponse: (response?: ContentResponseMessage) => void): void {
+	private async handleMessage(message: unknown, sender: chrome.runtime.MessageSender, sendResponse: (response?: ContentResponseMessage) => void): Promise<void> {
 		// Validate message structure and source
 		const validation = validateMessage(message, CONTENT_COMMAND_TYPES)
 
@@ -74,13 +75,10 @@ export class FormFillaContent {
 					break
 
 				case 'fillForm':
-					if (typedMessage.profileData) {
-						this.handleFormFillRequest(typedMessage.profileData)
-						sendResponse({ success: true })
-					} else {
-						this.fillAllFormsOnPage()
-						sendResponse({ success: true })
-					}
+					const results = typedMessage.profileData
+						? await this.handleFormFillRequest(typedMessage.profileData)
+						: await this.fillAllFormsOnPage()
+					sendResponse({ success: true, results })
 					break
 
 				case 'getFormFields':
@@ -105,18 +103,19 @@ export class FormFillaContent {
 		}
 	}
 
-	private handleFormFillRequest(profileData: ProfileData): void {
+	private async handleFormFillRequest(profileData: ProfileData): Promise<FillResult[]> {
 		const forms = document.querySelectorAll('form')
-		forms.forEach(form => {
-			void this.interactionManager.fillFormWithProfile(form, profileData)
-		})
+		const results = await Promise.all(Array.from(forms).map(form => {
+			return this.interactionManager.fillFormWithProfile(form, profileData)
+		}))
+
+		return results.flat()
 	}
 
-	private fillAllFormsOnPage(): void {
+	private async fillAllFormsOnPage(): Promise<FillResult[]> {
 		const forms = document.querySelectorAll('form')
-		forms.forEach(form => {
-			void this.fillForm(form)
-		})
+		const results = await Promise.all(Array.from(forms).map(form => this.fillForm(form)))
+		return results.flat()
 	}
 
 	private setupFormDetection(): void {
@@ -378,7 +377,7 @@ export class FormFillaContent {
 		})
 	}
 
-	private async fillForm(form: HTMLFormElement): Promise<void> {
+	private async fillForm(form: HTMLFormElement): Promise<FillResult[]> {
 		try {
 			// Try to get profile data with retry logic in case background script is still initializing
 			let response = null
@@ -403,15 +402,17 @@ export class FormFillaContent {
 			}
 
 			if (isProfileDataResponse(response)) {
-				await this.interactionManager.fillFormWithProfile(form, response.profileData)
+				return await this.interactionManager.fillFormWithProfile(form, response.profileData)
 			} else {
 				// If still no response after retries, show error
 				console.warn('FormFilla: No profile data received after retries')
 				this.showUserMessage('FormFilla: Unable to get profile data. Please try again.')
+				return []
 			}
 		} catch (error) {
 			console.error('FormFilla: Failed to get profile data:', error)
 			this.showUserMessage('FormFilla: Unable to fill form. Please try again.')
+			return []
 		}
 	}
 

@@ -385,7 +385,15 @@ export interface GetFormFieldsResponseMessage {
 	fieldCount: number
 }
 
-export type ContentResponseMessage = RuntimeSuccessResponse | RuntimeErrorResponse | GetFormFieldsResponseMessage
+export interface FillFormResponseMessage extends RuntimeSuccessResponse {
+	results: FillResult[]
+}
+
+export type ContentResponseMessage =
+	| RuntimeSuccessResponse
+	| RuntimeErrorResponse
+	| GetFormFieldsResponseMessage
+	| FillFormResponseMessage
 
 /**
  * @deprecated Use ProfileDefinition for new work.
