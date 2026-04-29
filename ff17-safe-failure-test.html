@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>FormFilla FF-17 Safe Failure Fixture</title>
+	<style>
+		body {
+			margin: 0;
+			padding: 24px;
+			font-family: 'Segoe UI', sans-serif;
+			background: #f4f1ea;
+			color: #1d2d24;
+		}
+
+		main {
+			max-width: 1080px;
+			margin: 0 auto;
+			background: rgba(255, 253, 248, 0.96);
+			border-radius: 18px;
+			padding: 28px;
+			box-shadow: 0 20px 42px rgba(41, 33, 25, 0.08);
+		}
+
+		h1,
+		h2,
+		legend {
+			margin-top: 0;
+			font-family: Georgia, 'Times New Roman', serif;
+		}
+
+		.grid {
+			display: grid;
+			grid-template-columns: repeat(2, minmax(0, 1fr));
+			gap: 18px;
+		}
+
+		.card {
+			padding: 18px;
+			border: 1px solid #dbd4c6;
+			border-radius: 14px;
+			background: #fcfaf5;
+		}
+
+		label,
+		.legend {
+			display: block;
+			font-weight: 600;
+			margin-bottom: 10px;
+		}
+
+		input,
+		select,
+		[role="combobox"],
+		[role="listbox"],
+		[role="switch"],
+		[role="spinbutton"],
+		button[aria-haspopup="listbox"] {
+			width: 100%;
+			padding: 10px 12px;
+			border: 1px solid #cabfae;
+			border-radius: 10px;
+			box-sizing: border-box;
+			background: #fff;
+			font: inherit;
+		}
+
+		[role="combobox"],
+		[role="switch"],
+		button[aria-haspopup="listbox"] {
+			cursor: pointer;
+			text-align: left;
+		}
+
+		.popup {
+			margin-top: 10px;
+			padding: 8px;
+			border: 1px solid #d9d0c2;
+			border-radius: 10px;
+			display: grid;
+			gap: 6px;
+			background: #fff;
+		}
+
+		[role="option"],
+		[role="radio"] {
+			padding: 8px 10px;
+			border-radius: 8px;
+			cursor: pointer;
+		}
+
+		[role="option"][aria-selected="true"],
+		[role="radio"][aria-checked="true"] {
+			background: #e7efe5;
+			color: #29553e;
+		}
+
+		.help {
+			margin: 8px 0 0;
+			font-size: 13px;
+			color: #5d645d;
+		}
+
+		.hidden {
+			display: none;
+		}
+
+		pre {
+			margin: 22px 0 0;
+			padding: 14px;
+			border-radius: 12px;
+			background: #20241f;
+			color: #f6f3eb;
+			overflow-x: auto;
+		}
+
+		shadow-select-mismatch {
+			display: block;
+			margin-top: 18px;
+		}
+
+		@media (max-width: 860px) {
+			.grid {
+				grid-template-columns: 1fr;
+			}
+		}
+	</style>
+</head>
+
+<body>
+	<main>
+		<h1>FF-17 Safe Failure Fixture</h1>
+		<p>This fixture keeps the controls recognizable, but intentionally removes matching values so the shipped adapter
+			families fail safely with explicit unresolved messages.</p>
+
+		<form id="safe-failure-form">
+			<div class="grid">
+				<section class="card">
+					<label for="native-country-select">Country Select Mismatch</label>
+					<select id="native-country-select" name="country">
+						<option value="">Choose a country</option>
+						<option value="ES">Spain</option>
+						<option value="JP">Japan</option>
+					</select>
+					<p class="help">Native select adapter should skip with an explicit no-match result.</p>
+				</section>
+
+				<section class="card">
+					<label id="aria-title-label" for="aria-title-combobox">Job Title Combobox</label>
+					<div id="aria-title-combobox" role="combobox" name="jobTitle" aria-labelledby="aria-title-label"
+						aria-controls="aria-title-options" aria-expanded="false" tabindex="0">Designer</div>
+					<div id="aria-title-options" class="popup hidden" role="listbox" aria-label="Mismatch job title options">
+						<div role="option" aria-selected="true" data-value="Designer">Designer</div>
+						<div role="option" aria-selected="false" data-value="Manager">Manager</div>
+					</div>
+					<p class="help">ARIA combobox options intentionally exclude Engineer.</p>
+				</section>
+
+				<section class="card">
+					<label id="aria-department-label">Department Listbox</label>
+					<div id="aria-department-listbox" role="listbox" name="department" aria-labelledby="aria-department-label"
+						tabindex="0">
+						<div role="option" aria-selected="false" data-value="Marketing">Marketing</div>
+						<div role="option" aria-selected="false" data-value="Support">Support</div>
+					</div>
+					<p class="help">ARIA listbox options intentionally exclude QA.</p>
+				</section>
+
+				<section class="card">
+					<label id="aria-switch-label">Department Toggle</label>
+					<button type="button" id="aria-department-switch" role="switch" name="departmentToggle"
+						aria-labelledby="aria-switch-label" aria-checked="false" data-off-value="Support"
+						data-on-value="Marketing">Support</button>
+					<p class="help">Switch states intentionally exclude QA.</p>
+				</section>
+
+				<section class="card">
+					<div class="legend" id="aria-gender-label">Gender Group</div>
+					<div id="aria-gender-group" role="radiogroup" name="gender" aria-labelledby="aria-gender-label">
+						<div role="radio" tabindex="0" aria-checked="false" data-value="Male">Male</div>
+						<div role="radio" tabindex="0" aria-checked="false" data-value="Other">Other</div>
+					</div>
+					<p class="help">Radiogroup options intentionally exclude Female.</p>
+				</section>
+
+				<section class="card">
+					<label id="aria-age-label">Age Spinbutton</label>
+					<div id="aria-age-spinbutton" role="spinbutton" name="age" aria-labelledby="aria-age-label"
+						aria-valuenow="unknown" aria-valuetext="unknown" data-step="1" tabindex="0">unknown</div>
+					<p class="help">Spinbutton omits a usable numeric starting value to force a safe failure.</p>
+				</section>
+
+				<section class="card">
+					<label id="react-failure-label" for="react-failure-control">Country React Select</label>
+					<div id="react-failure-control" role="combobox" name="country" aria-labelledby="react-failure-label"
+						aria-controls="react-failure-menu" aria-expanded="false" tabindex="0">Spain</div>
+					<input type="hidden" id="react-failure-hidden" name="country" value="Spain"
+						data-hidden-input-for="react-failure-control">
+					<div id="react-failure-menu" class="popup hidden" role="listbox" aria-label="React failure options">
+						<div role="option" aria-selected="true" data-value="Spain">Spain</div>
+						<div role="option" aria-selected="false" data-value="Japan">Japan</div>
+					</div>
+					<p class="help">React Select-like options intentionally exclude Canada.</p>
+				</section>
+
+				<section class="card">
+					<label id="headless-failure-label">Department Headless</label>
+					<button type="button" id="headless-failure-trigger" name="department" aria-haspopup="listbox"
+						aria-controls="headless-failure-menu" aria-expanded="false"
+						aria-labelledby="headless-failure-label headless-failure-value">
+						<span id="headless-failure-value">Support</span>
+					</button>
+					<input type="hidden" id="headless-failure-hidden" name="department" value="Support"
+						data-hidden-input-for="headless-failure-trigger">
+					<div id="headless-failure-menu" class="popup hidden" role="listbox" aria-label="Headless failure options">
+						<div role="option" aria-selected="true" data-value="Support">Support</div>
+						<div role="option" aria-selected="false" data-value="Marketing">Marketing</div>
+					</div>
+					<p class="help">Headless UI-like options intentionally exclude QA.</p>
+				</section>
+
+				<section class="card">
+					<label for="mui-failure-input">Job Title Autocomplete</label>
+					<input id="mui-failure-input" type="text" role="combobox" name="jobTitle" aria-autocomplete="list"
+						aria-controls="mui-failure-listbox" aria-expanded="false" value="Designer">
+					<div id="mui-failure-listbox" class="popup hidden" role="listbox" aria-label="MUI failure options">
+						<div role="option" aria-selected="true" data-value="Designer">Designer</div>
+						<div role="option" aria-selected="false" data-value="Manager">Manager</div>
+					</div>
+					<p class="help">Autocomplete options intentionally exclude Engineer.</p>
+				</section>
+
+				<section class="card">
+					<label for="masked-reset-input">Phone Mask Reset</label>
+					<input id="masked-reset-input" type="text" name="phone" data-mask="(999) 999-9999"
+						placeholder="(999) 999-9999">
+					<p class="help">The change handler clears the formatted value so masked verification must fail cleanly.</p>
+				</section>
+			</div>
+		</form>
+
+		<shadow-select-mismatch></shadow-select-mismatch>
+
+		<pre id="fixture-state"></pre>
+	</main>
+
+	<script>
+		class ShadowSelectMismatch extends HTMLElement {
+			constructor() {
+				super();
+				const root = this.attachShadow({ mode: 'open' });
+				root.innerHTML = `
+					<style>
+						.card { padding: 18px; border: 1px solid #dbd4c6; border-radius: 14px; background: #fcfaf5; }
+						label { display: grid; gap: 10px; font-weight: 600; }
+						select { width: 100%; padding: 10px 12px; border: 1px solid #cabfae; border-radius: 10px; font: inherit; }
+						p { margin: 8px 0 0; font-size: 13px; color: #5d645d; }
+					</style>
+					<form class="card" id="shadow-failure-form">
+						<label>
+							Shadow Country
+							<select id="shadow-country-select" name="country">
+								<option value="ES">Spain</option>
+								<option value="JP">Japan</option>
+							</select>
+						</label>
+						<p>Open shadow-root native select that intentionally excludes Canada.</p>
+					</form>
+				`;
+			}
+		}
+
+		customElements.define('shadow-select-mismatch', ShadowSelectMismatch);
+
+		const stateEl = document.getElementById('fixture-state');
+
+		function updateState() {
+			const shadowValue = document.querySelector('shadow-select-mismatch')?.shadowRoot?.getElementById('shadow-country-select')?.value || '';
+			stateEl.textContent = JSON.stringify({
+				nativeCountryValue: document.getElementById('native-country-select').value,
+				ariaTitleValue: document.getElementById('aria-title-combobox').textContent.trim(),
+				ariaDepartmentValue: document.querySelector('#aria-department-listbox [role="option"][aria-selected="true"]')?.getAttribute('data-value') || '',
+				ariaSwitchValue: document.getElementById('aria-department-switch').textContent.trim(),
+				ariaGenderValue: document.querySelector('#aria-gender-group [role="radio"][aria-checked="true"]')?.getAttribute('data-value') || '',
+				ariaAgeValue: document.getElementById('aria-age-spinbutton').getAttribute('aria-valuenow'),
+				reactCountryValue: document.getElementById('react-failure-control').textContent.trim(),
+				headlessDepartmentValue: document.getElementById('headless-failure-value').textContent.trim(),
+				muiValue: document.getElementById('mui-failure-input').value,
+				maskedResetValue: document.getElementById('masked-reset-input').value,
+				shadowValue
+			}, null, 2);
+		}
+
+		function setSelectedOption(container, value) {
+			container.querySelectorAll('[role="option"]').forEach(option => {
+				option.setAttribute('aria-selected', option.getAttribute('data-value') === value ? 'true' : 'false');
+			});
+		}
+
+		function wireCombobox(controlId, popupId, hiddenInputId) {
+			const control = document.getElementById(controlId);
+			const popup = document.getElementById(popupId);
+			const hiddenInput = hiddenInputId ? document.getElementById(hiddenInputId) : null;
+
+			control.addEventListener('click', () => {
+				const expanded = control.getAttribute('aria-expanded') === 'true';
+				control.setAttribute('aria-expanded', expanded ? 'false' : 'true');
+				popup.classList.toggle('hidden', expanded);
+			});
+
+			popup.querySelectorAll('[role="option"]').forEach(option => {
+				option.addEventListener('click', () => {
+					const nextValue = option.getAttribute('data-value');
+					setSelectedOption(popup, nextValue);
+					if (control.tagName === 'INPUT') {
+						control.value = nextValue;
+					} else {
+						control.textContent = nextValue;
+					}
+					control.setAttribute('aria-expanded', 'false');
+					popup.classList.add('hidden');
+					if (hiddenInput) {
+						hiddenInput.value = nextValue;
+					}
+					updateState();
+				});
+			});
+		}
+
+		function wireListbox(listboxId) {
+			const listbox = document.getElementById(listboxId);
+			listbox.querySelectorAll('[role="option"]').forEach(option => {
+				option.addEventListener('click', () => {
+					setSelectedOption(listbox, option.getAttribute('data-value'));
+					updateState();
+				});
+			});
+		}
+
+		function wireHeadless(triggerId, popupId, valueId, hiddenInputId) {
+			const trigger = document.getElementById(triggerId);
+			const popup = document.getElementById(popupId);
+			const value = document.getElementById(valueId);
+			const hiddenInput = document.getElementById(hiddenInputId);
+
+			trigger.addEventListener('click', () => {
+				const expanded = trigger.getAttribute('aria-expanded') === 'true';
+				trigger.setAttribute('aria-expanded', expanded ? 'false' : 'true');
+				popup.classList.toggle('hidden', expanded);
+			});
+
+			popup.querySelectorAll('[role="option"]').forEach(option => {
+				option.addEventListener('click', () => {
+					const nextValue = option.getAttribute('data-value');
+					setSelectedOption(popup, nextValue);
+					value.textContent = nextValue;
+					hiddenInput.value = nextValue;
+					trigger.setAttribute('aria-expanded', 'false');
+					popup.classList.add('hidden');
+					updateState();
+				});
+			});
+		}
+
+		function wireSwitch(switchId) {
+			const switchEl = document.getElementById(switchId);
+			switchEl.addEventListener('click', () => {
+				const nextState = switchEl.getAttribute('aria-checked') !== 'true';
+				switchEl.setAttribute('aria-checked', nextState ? 'true' : 'false');
+				switchEl.textContent = nextState ? switchEl.getAttribute('data-on-value') : switchEl.getAttribute('data-off-value');
+				updateState();
+			});
+		}
+
+		function wireRadioGroup(groupId) {
+			const group = document.getElementById(groupId);
+			group.querySelectorAll('[role="radio"]').forEach(option => {
+				option.addEventListener('click', () => {
+					group.querySelectorAll('[role="radio"]').forEach(node => node.setAttribute('aria-checked', 'false'));
+					option.setAttribute('aria-checked', 'true');
+					updateState();
+				});
+			});
+		}
+
+		wireCombobox('aria-title-combobox', 'aria-title-options');
+		wireListbox('aria-department-listbox');
+		wireSwitch('aria-department-switch');
+		wireRadioGroup('aria-gender-group');
+		wireCombobox('react-failure-control', 'react-failure-menu', 'react-failure-hidden');
+		wireHeadless('headless-failure-trigger', 'headless-failure-menu', 'headless-failure-value', 'headless-failure-hidden');
+		wireCombobox('mui-failure-input', 'mui-failure-listbox');
+
+		const maskedInput = document.getElementById('masked-reset-input');
+		maskedInput.addEventListener('input', () => {
+			const digits = maskedInput.value.replace(/\D/g, '').slice(0, 10);
+			let formatted = '';
+			if (digits.length > 0) formatted += '(' + digits.slice(0, 3);
+			if (digits.length >= 4) formatted += ') ' + digits.slice(3, 6);
+			if (digits.length >= 7) formatted += '-' + digits.slice(6, 10);
+			maskedInput.value = formatted || digits;
+			updateState();
+		});
+
+		maskedInput.addEventListener('change', () => {
+			window.setTimeout(() => {
+				maskedInput.value = '';
+				updateState();
+			}, 0);
+		});
+
+		updateState();
+	</script>
+</body>
+
+</html>

@@ -68,6 +68,14 @@ To manually verify retry and rescan behavior for delayed or replaced native cont
 
 The dynamic replace fixture swaps an email input after the first input event, and the delayed discovery fixture inserts a phone field after the fill run begins. A correct FF-08 implementation should recover and fill both cases.
 
+### Automated Fixture Verification
+
+To run the built-content regression net for the native, dynamic, ARIA, library, multi-step, and safe-failure fixtures:
+
+1. Run `npm run verify:fixtures`
+
+The verifier builds the extension, loads each local HTML fixture through a `jsdom` harness, imports the real `dist/content.js` bundle, sends the same `fillForm` message the extension uses in the browser, and asserts the expected filled, review, skipped, and failed outcomes.
+
 ### Verifying Profile Migration
 
 To manually verify legacy profile upgrades through the real storage layer:
