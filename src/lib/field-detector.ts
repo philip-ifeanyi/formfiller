@@ -15,7 +15,14 @@ import {
 	type FormSnapshot
 } from '@/types'
 
-const CONTROL_SELECTOR = 'input, select, textarea'
+const ARIA_CONTROL_SELECTOR = [
+	'[role="combobox"]',
+	'[role="listbox"]',
+	'[role="switch"]',
+	'[role="radiogroup"]',
+	'[role="spinbutton"]'
+].join(', ')
+const CONTROL_SELECTOR = `input, select, textarea, ${ARIA_CONTROL_SELECTOR}`
 const SECTION_SELECTOR = 'fieldset, section, article, [role="group"], [data-form-section]'
 const FIELD_INFERENCE_LIMITS = {
 	highConfidence: 0.72,
@@ -333,7 +340,7 @@ export class FieldDetector {
 	}
 
 	inferField(element: FormControlElement): FieldInference {
-		const ownerForm = element.form || element.closest('form')
+		const ownerForm = this.getOwnerForm(element)
 		const formId = ownerForm ? this.getFormIdentifier(ownerForm) : `detached:${this.buildDomSignature(element)}`
 		const sectionElement = ownerForm
 			? this.getSectionContainer(element, ownerForm)
@@ -565,7 +572,7 @@ export class FieldDetector {
 
 		searchRoots.forEach(root => {
 			root.querySelectorAll(CONTROL_SELECTOR).forEach(controlNode => {
-				if (!(controlNode instanceof HTMLInputElement || controlNode instanceof HTMLTextAreaElement || controlNode instanceof HTMLSelectElement)) {
+				if (!this.isSupportedControlElement(controlNode)) {
 					return
 				}
 
@@ -726,8 +733,9 @@ export class FieldDetector {
 		}
 
 		const supportedControlKinds = target.entry.supportedControlKinds || []
+		const compatibleControlKinds = this.getCompatibleControlKinds(candidate.controlKind)
 		if (supportedControlKinds.length > 0) {
-			if (supportedControlKinds.includes(candidate.controlKind)) {
+			if (supportedControlKinds.some(controlKind => compatibleControlKinds.includes(controlKind))) {
 				confidence += CLASSIFIER_WEIGHTS.controlKindBonus
 				reasons.push(`control kind ${candidate.controlKind} is supported`)
 			} else {
@@ -941,6 +949,54 @@ export class FieldDetector {
 		return roots
 	}
 
+	private isSupportedControlElement(node: Element): node is FormControlElement {
+		if (node instanceof HTMLElement && this.isOwnedPopupControl(node)) {
+			return false
+		}
+
+		if (node instanceof HTMLInputElement || node instanceof HTMLTextAreaElement || node instanceof HTMLSelectElement) {
+			return true
+		}
+
+		return node instanceof HTMLElement && this.getAriaControlKind(node) !== null
+	}
+
+	private isOwnedPopupControl(node: HTMLElement): boolean {
+		if (!node.id) {
+			return false
+		}
+
+		return Array.from(node.ownerDocument.querySelectorAll<HTMLElement>('[role="combobox"]')).some(control => {
+			const controlledIds = [control.getAttribute('aria-controls'), control.getAttribute('aria-owns')]
+				.filter((value): value is string => Boolean(value))
+				.flatMap(value => value.split(/\s+/).filter(Boolean))
+
+			return controlledIds.includes(node.id)
+		})
+	}
+
+	private getCompatibleControlKinds(controlKind: FieldControlKind): FieldControlKind[] {
+		switch (controlKind) {
+			case 'combobox':
+				return ['combobox', 'select', 'text']
+
+			case 'listbox':
+				return ['listbox', 'select']
+
+			case 'switch':
+				return ['switch', 'checkbox']
+
+			case 'radiogroup':
+				return ['radiogroup', 'radio']
+
+			case 'spinbutton':
+				return ['spinbutton', 'number', 'text']
+
+			default:
+				return [controlKind]
+		}
+	}
+
 	private getFormIdentifier(form: HTMLFormElement): string {
 		if (form.id) {
 			return `form:${form.id}`
@@ -949,8 +1005,16 @@ export class FieldDetector {
 		return `form:${this.buildDomSignature(form)}`
 	}
 
+	private getOwnerForm(element: FormControlElement): HTMLFormElement | null {
+		if (element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement || element instanceof HTMLSelectElement) {
+			return element.form || element.closest('form')
+		}
+
+		return element.closest('form')
+	}
+
 	private belongsToForm(control: FormControlElement, form: HTMLFormElement): boolean {
-		if (control.form === form) return true
+		if (this.getOwnerForm(control) === form) return true
 		if (form.id && control.getAttribute('form') === form.id) return true
 
 		return this.isNodeWithinFormTree(control, form)
@@ -1026,6 +1090,9 @@ export class FieldDetector {
 	}
 
 	private getControlKind(element: FormControlElement): FieldControlKind {
+		const ariaControlKind = this.getAriaControlKind(element)
+		if (ariaControlKind) return ariaControlKind
+
 		if (element instanceof HTMLTextAreaElement) return 'textarea'
 		if (element instanceof HTMLSelectElement) return 'select'
 		if (!(element instanceof HTMLInputElement)) return 'unknown'
@@ -1056,6 +1123,28 @@ export class FieldDetector {
 		}
 	}
 
+	private getAriaControlKind(element: Element): FieldControlKind | null {
+		switch (element.getAttribute('role')) {
+			case 'combobox':
+				return 'combobox'
+
+			case 'listbox':
+				return 'listbox'
+
+			case 'switch':
+				return 'switch'
+
+			case 'radiogroup':
+				return 'radiogroup'
+
+			case 'spinbutton':
+				return 'spinbutton'
+
+			default:
+				return null
+		}
+	}
+
 	private collectAttributes(element: FormControlElement): Record<string, string> {
 		return Array.from(element.attributes).reduce<Record<string, string>>((attributes, attribute) => {
 			attributes[attribute.name] = attribute.value
@@ -1064,13 +1153,50 @@ export class FieldDetector {
 	}
 
 	private getOptionText(element: FormControlElement): string[] {
-		if (!(element instanceof HTMLSelectElement)) {
+		if (element instanceof HTMLSelectElement) {
+			return Array.from(element.options)
+				.map(option => option.textContent?.trim() || '')
+				.filter(Boolean)
+		}
+
+		if (!(element instanceof HTMLElement)) {
 			return []
 		}
 
-		return Array.from(element.options)
-			.map(option => option.textContent?.trim() || '')
-			.filter(Boolean)
+		const options = [
+			...Array.from(element.querySelectorAll<HTMLElement>('[role="option"], [role="radio"]')),
+			...this.getControlledPopupOptions(element)
+		]
+
+		const uniqueOptions = new Set<string>()
+		options.forEach(option => {
+			const text = option.textContent?.trim() || option.getAttribute('aria-label')?.trim() || ''
+			if (text) {
+				uniqueOptions.add(text)
+			}
+		})
+
+		return Array.from(uniqueOptions)
+	}
+
+	private getControlledPopupOptions(element: HTMLElement): HTMLElement[] {
+		const popupIds = [element.getAttribute('aria-controls'), element.getAttribute('aria-owns')]
+			.filter((value): value is string => Boolean(value))
+			.flatMap(value => value.split(/\s+/).filter(Boolean))
+
+		const options: HTMLElement[] = []
+		popupIds.forEach(id => {
+			const popup = element.ownerDocument.getElementById(id)
+			if (!popup) {
+				return
+			}
+
+			popup.querySelectorAll<HTMLElement>('[role="option"], [role="radio"]').forEach(option => {
+				options.push(option)
+			})
+		})
+
+		return options
 	}
 
 	private getNearbyText(

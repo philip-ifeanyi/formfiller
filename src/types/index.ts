@@ -1,13 +1,18 @@
 export const PROFILE_SCHEMA_VERSION = 1 as const
 
 export type ProfileSchemaVersion = typeof PROFILE_SCHEMA_VERSION
-export type FormControlElement = HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement
+export type FormControlElement = HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement | HTMLElement
 export type FieldControlKind =
 	| 'text'
 	| 'textarea'
 	| 'select'
 	| 'checkbox'
 	| 'radio'
+	| 'combobox'
+	| 'listbox'
+	| 'switch'
+	| 'radiogroup'
+	| 'spinbutton'
 	| 'date'
 	| 'datetime'
 	| 'number'

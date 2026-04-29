@@ -28,7 +28,9 @@ function isFieldValueResponse(response: BackgroundResponseMessage | undefined): 
 	return Boolean(response && 'value' in response)
 }
 
-type NativeAdapterDefinition = {
+const ARIA_WIDGET_ROLES = new Set(['combobox', 'listbox', 'switch', 'radiogroup', 'spinbutton'])
+
+type AdapterDefinition = {
 	id: string
 	eventStrategy: string[]
 }
@@ -40,7 +42,7 @@ type PlannedFieldFill = {
 	result?: FillResult
 }
 
-type NativeAdapterExecution = {
+type AdapterExecution = {
 	applied: boolean
 	appliedValue?: string
 	message?: string
@@ -87,28 +89,53 @@ const SETTLEMENT_RETRY_POLICY: FillRetryPolicy = {
 const MANUAL_FIELD_KEY = 'custom.manual' as CanonicalFieldKey
 const UNRESOLVED_FIELD_KEY = 'custom.unresolved' as CanonicalFieldKey
 
-const NATIVE_TEXT_ADAPTER: NativeAdapterDefinition = {
+const NATIVE_TEXT_ADAPTER: AdapterDefinition = {
 	id: 'native.textual',
 	eventStrategy: ['focus', 'input', 'change', 'blur']
 }
 
-const NATIVE_TEXTAREA_ADAPTER: NativeAdapterDefinition = {
+const NATIVE_TEXTAREA_ADAPTER: AdapterDefinition = {
 	id: 'native.textarea',
 	eventStrategy: ['focus', 'input', 'change', 'blur']
 }
 
-const NATIVE_SELECT_ADAPTER: NativeAdapterDefinition = {
+const NATIVE_SELECT_ADAPTER: AdapterDefinition = {
 	id: 'native.select',
 	eventStrategy: ['focus', 'input', 'change', 'blur']
 }
 
-const NATIVE_CHECKBOX_ADAPTER: NativeAdapterDefinition = {
+const NATIVE_CHECKBOX_ADAPTER: AdapterDefinition = {
 	id: 'native.checkbox',
 	eventStrategy: ['focus', 'input', 'change', 'blur']
 }
 
-const NATIVE_RADIO_ADAPTER: NativeAdapterDefinition = {
+const NATIVE_RADIO_ADAPTER: AdapterDefinition = {
 	id: 'native.radio',
+	eventStrategy: ['focus', 'input', 'change', 'blur']
+}
+
+const ARIA_COMBOBOX_ADAPTER: AdapterDefinition = {
+	id: 'aria.combobox',
+	eventStrategy: ['focus', 'input', 'change', 'blur']
+}
+
+const ARIA_LISTBOX_ADAPTER: AdapterDefinition = {
+	id: 'aria.listbox',
+	eventStrategy: ['focus', 'change', 'blur']
+}
+
+const ARIA_SWITCH_ADAPTER: AdapterDefinition = {
+	id: 'aria.switch',
+	eventStrategy: ['focus', 'input', 'change', 'blur']
+}
+
+const ARIA_RADIOGROUP_ADAPTER: AdapterDefinition = {
+	id: 'aria.radiogroup',
+	eventStrategy: ['focus', 'change', 'blur']
+}
+
+const ARIA_SPINBUTTON_ADAPTER: AdapterDefinition = {
+	id: 'aria.spinbutton',
 	eventStrategy: ['focus', 'input', 'change', 'blur']
 }
 
@@ -682,6 +709,7 @@ export class InteractionManager {
 			normalizedMessage.includes('no fillable profile value') ||
 			normalizedMessage.includes('no profile path is registered') ||
 			normalizedMessage.includes('do not have a native adapter yet') ||
+			normalizedMessage.includes('do not have a role-aware adapter yet') ||
 			normalizedMessage.includes('requires manual review')
 		) {
 			return false
@@ -869,7 +897,7 @@ export class InteractionManager {
 			}
 		}
 
-		const adapter = this.getNativeAdapter(candidate.controlKind)
+		const adapter = this.getAdapter(candidate.controlKind)
 		if (!adapter) {
 			return {
 				candidate,
@@ -882,8 +910,8 @@ export class InteractionManager {
 						candidate.id,
 						inference.fieldKey,
 						'skipped',
-						'native.unsupported',
-						`Skipped because ${candidate.controlKind} controls do not have a native adapter yet`
+						'aria.unsupported',
+						`Skipped because ${candidate.controlKind} controls do not have a role-aware adapter yet`
 					)
 				)
 			}
@@ -1082,14 +1110,14 @@ export class InteractionManager {
 		if (!this.isFormField(element)) return null
 
 		const controlKind = this.getControlKind(element)
-		const adapter = this.getNativeAdapter(controlKind)
+		const adapter = this.getAdapter(controlKind)
 		if (!adapter) {
 			return this.createBlockedFillResult(
 				`direct:${Date.now()}`,
 				MANUAL_FIELD_KEY,
 				'skipped',
-				'native.unsupported',
-				`Skipped because ${controlKind} controls do not have a native adapter yet`
+				'aria.unsupported',
+				`Skipped because ${controlKind} controls do not have a role-aware adapter yet`
 			)
 		}
 
@@ -1136,7 +1164,7 @@ export class InteractionManager {
 		instruction: FillInstruction
 	): Promise<FillResult> {
 		try {
-			const execution = await this.applyNativeAdapter(element, controlKind, instruction)
+			const execution = await this.applyAdapter(element, controlKind, instruction)
 
 			if (!execution.applied) {
 				return this.createBlockedFillResult(
@@ -1173,11 +1201,11 @@ export class InteractionManager {
 		}
 	}
 
-	private async applyNativeAdapter(
+	private async applyAdapter(
 		element: FormControlElement,
 		controlKind: FieldControlKind,
 		instruction: FillInstruction
-	): Promise<NativeAdapterExecution> {
+	): Promise<AdapterExecution> {
 		switch (controlKind) {
 			case 'select':
 				return this.applySelectAdapter(element as HTMLSelectElement, instruction)
@@ -1187,6 +1215,21 @@ export class InteractionManager {
 
 			case 'radio':
 				return this.applyRadioAdapter(element as HTMLInputElement, instruction)
+
+			case 'combobox':
+				return this.applyComboboxAdapter(element, instruction)
+
+			case 'listbox':
+				return this.applyListboxAdapter(element, instruction)
+
+			case 'switch':
+				return this.applySwitchAdapter(element, instruction)
+
+			case 'radiogroup':
+				return this.applyAriaRadioGroupAdapter(element, instruction)
+
+			case 'spinbutton':
+				return this.applySpinbuttonAdapter(element, instruction)
 
 			case 'textarea':
 				return this.applyTextualAdapter(element as HTMLTextAreaElement, instruction)
@@ -1203,7 +1246,7 @@ export class InteractionManager {
 			default:
 				return {
 					applied: false,
-					message: `Unsupported native adapter for ${controlKind}`
+					message: `Unsupported adapter for ${controlKind}`
 				}
 		}
 	}
@@ -1211,7 +1254,7 @@ export class InteractionManager {
 	private async applyTextualAdapter(
 		element: HTMLInputElement | HTMLTextAreaElement,
 		instruction: FillInstruction
-	): Promise<NativeAdapterExecution> {
+	): Promise<AdapterExecution> {
 		this.focusIfPlanned(element, instruction)
 
 		if (this.userPreferences.fillDelay > 0 && this.shouldTypeSequentially(element)) {
@@ -1243,7 +1286,7 @@ export class InteractionManager {
 		return ['text', 'email', 'tel', 'password', 'search', 'url'].includes(element.type || 'text')
 	}
 
-	private applySelectAdapter(element: HTMLSelectElement, instruction: FillInstruction): NativeAdapterExecution {
+	private applySelectAdapter(element: HTMLSelectElement, instruction: FillInstruction): AdapterExecution {
 		const matchingOption = this.findMatchingOption(element, instruction.normalizedValue)
 		if (!matchingOption) {
 			return {
@@ -1267,7 +1310,7 @@ export class InteractionManager {
 		}
 	}
 
-	private applyCheckboxAdapter(element: HTMLInputElement, instruction: FillInstruction): NativeAdapterExecution {
+	private applyCheckboxAdapter(element: HTMLInputElement, instruction: FillInstruction): AdapterExecution {
 		const shouldCheck = this.resolveCheckboxState(instruction.normalizedValue, element)
 
 		this.focusIfPlanned(element, instruction)
@@ -1282,7 +1325,7 @@ export class InteractionManager {
 		}
 	}
 
-	private applyRadioAdapter(element: HTMLInputElement, instruction: FillInstruction): NativeAdapterExecution {
+	private applyRadioAdapter(element: HTMLInputElement, instruction: FillInstruction): AdapterExecution {
 		if (!this.matchesRadioValue(element, instruction.normalizedValue)) {
 			return {
 				applied: false,
@@ -1300,6 +1343,212 @@ export class InteractionManager {
 			applied: true,
 			appliedValue: element.value || instruction.normalizedValue
 		}
+	}
+
+	private applyComboboxAdapter(element: FormControlElement, instruction: FillInstruction): AdapterExecution {
+		const popup = this.resolveControlledPopup(element)
+		const options = this.getRoleOptions(element, popup, ['option'])
+		const matchingOption = this.findMatchingRoleOption(options, instruction.normalizedValue)
+		if (!matchingOption) {
+			return {
+				applied: false,
+				message: `No combobox option matched ${instruction.normalizedValue}`
+			}
+		}
+
+		this.focusIfPlanned(element, instruction)
+		this.openRolePopupIfNeeded(element)
+		matchingOption.click()
+		this.dispatchIfPlanned(element, instruction, 'input')
+		this.dispatchIfPlanned(element, instruction, 'change')
+		this.blurIfPlanned(element, instruction)
+
+		return {
+			applied: true,
+			appliedValue: this.getRoleOptionValue(matchingOption)
+		}
+	}
+
+	private applyListboxAdapter(element: FormControlElement, instruction: FillInstruction): AdapterExecution {
+		const options = this.getRoleOptions(element, this.resolveControlledPopup(element), ['option'])
+		const matchingOption = this.findMatchingRoleOption(options, instruction.normalizedValue)
+		if (!matchingOption) {
+			return {
+				applied: false,
+				message: `No listbox option matched ${instruction.normalizedValue}`
+			}
+		}
+
+		this.focusIfPlanned(element, instruction)
+		matchingOption.click()
+		this.dispatchIfPlanned(element, instruction, 'change')
+		this.blurIfPlanned(element, instruction)
+
+		return {
+			applied: true,
+			appliedValue: this.getRoleOptionValue(matchingOption)
+		}
+	}
+
+	private applySwitchAdapter(element: FormControlElement, instruction: FillInstruction): AdapterExecution {
+		const shouldCheck = this.resolveSwitchState(element, instruction.normalizedValue)
+		if (shouldCheck === null) {
+			return {
+				applied: false,
+				message: `Switch value ${instruction.normalizedValue} did not match an available state`
+			}
+		}
+		const currentState = element.getAttribute('aria-checked') === 'true'
+
+		this.focusIfPlanned(element, instruction)
+		if (currentState !== shouldCheck) {
+			element.click()
+		}
+		this.dispatchIfPlanned(element, instruction, 'input')
+		this.dispatchIfPlanned(element, instruction, 'change')
+		this.blurIfPlanned(element, instruction)
+
+		return {
+			applied: true,
+			appliedValue: shouldCheck ? 'true' : 'false'
+		}
+	}
+
+	private applyAriaRadioGroupAdapter(element: FormControlElement, instruction: FillInstruction): AdapterExecution {
+		const options = this.getRoleOptions(element, undefined, ['radio'])
+		const matchingOption = this.findMatchingRoleOption(options, instruction.normalizedValue)
+		if (!matchingOption) {
+			return {
+				applied: false,
+				message: `No radio option matched ${instruction.normalizedValue}`
+			}
+		}
+
+		this.focusIfPlanned(element, instruction)
+		matchingOption.click()
+		this.dispatchIfPlanned(element, instruction, 'change')
+		this.blurIfPlanned(element, instruction)
+
+		return {
+			applied: true,
+			appliedValue: this.getRoleOptionValue(matchingOption)
+		}
+	}
+
+	private applySpinbuttonAdapter(element: FormControlElement, instruction: FillInstruction): AdapterExecution {
+		const targetValue = Number(instruction.normalizedValue)
+		if (!Number.isFinite(targetValue)) {
+			return {
+				applied: false,
+				message: `Spinbutton value ${instruction.normalizedValue} is not numeric`
+			}
+		}
+
+		this.focusIfPlanned(element, instruction)
+
+		if (element instanceof HTMLInputElement) {
+			element.value = instruction.normalizedValue
+			this.dispatchIfPlanned(element, instruction, 'input')
+			this.dispatchIfPlanned(element, instruction, 'change')
+			this.blurIfPlanned(element, instruction)
+			return {
+				applied: true,
+				appliedValue: instruction.normalizedValue
+			}
+		}
+
+		const currentValue = Number(element.getAttribute('aria-valuenow') || element.getAttribute('data-value') || '0')
+		if (!Number.isFinite(currentValue)) {
+			return {
+				applied: false,
+				message: 'Spinbutton is missing a usable current numeric value'
+			}
+		}
+
+		const step = Number(element.getAttribute('aria-valuestep') || element.getAttribute('data-step') || '1') || 1
+		const direction = targetValue >= currentValue ? 'ArrowUp' : 'ArrowDown'
+		const stepsNeeded = Math.min(64, Math.round(Math.abs(targetValue - currentValue) / Math.abs(step || 1)))
+
+		for (let index = 0; index < stepsNeeded; index += 1) {
+			element.dispatchEvent(new KeyboardEvent('keydown', { key: direction, bubbles: true }))
+			element.dispatchEvent(new KeyboardEvent('keyup', { key: direction, bubbles: true }))
+		}
+
+		this.dispatchIfPlanned(element, instruction, 'input')
+		this.dispatchIfPlanned(element, instruction, 'change')
+		this.blurIfPlanned(element, instruction)
+
+		return {
+			applied: true,
+			appliedValue: instruction.normalizedValue
+		}
+	}
+
+	private resolveControlledPopup(element: FormControlElement): HTMLElement | null {
+		const popupIds = [element.getAttribute('aria-controls'), element.getAttribute('aria-owns')]
+			.filter((value): value is string => Boolean(value))
+			.flatMap(value => value.split(/\s+/).filter(Boolean))
+
+		for (const id of popupIds) {
+			const popup = document.getElementById(id)
+			if (popup) {
+				return popup
+			}
+		}
+
+		return null
+	}
+
+	private openRolePopupIfNeeded(element: FormControlElement): void {
+		if (element.getAttribute('aria-expanded') === 'false') {
+			element.click()
+		}
+	}
+
+	private getRoleOptions(
+		element: FormControlElement,
+		popup: HTMLElement | null = null,
+		roles: string[] = ['option']
+	): HTMLElement[] {
+		const selector = roles.map(role => `[role="${role}"]`).join(', ')
+		const options = new Set<HTMLElement>()
+
+		const addOptionsFromRoot = (root: ParentNode | null) => {
+			if (!root) {
+				return
+			}
+
+			root.querySelectorAll<HTMLElement>(selector).forEach(option => {
+				options.add(option)
+			})
+		}
+
+		addOptionsFromRoot(element)
+		addOptionsFromRoot(popup)
+
+		return Array.from(options)
+	}
+
+	private findMatchingRoleOption(options: HTMLElement[], desiredValue: string): HTMLElement | null {
+		const normalizedDesiredValue = this.normalizeForMatch(desiredValue)
+
+		for (const option of options) {
+			const candidateValues = new Set<string>()
+			candidateValues.add(this.normalizeForMatch(option.textContent || ''))
+			candidateValues.add(this.normalizeForMatch(option.getAttribute('aria-label') || ''))
+			candidateValues.add(this.normalizeForMatch(option.getAttribute('data-value') || ''))
+			candidateValues.add(this.normalizeForMatch(option.getAttribute('aria-valuetext') || ''))
+
+			if (candidateValues.has(normalizedDesiredValue)) {
+				return option
+			}
+		}
+
+		return null
+	}
+
+	private getRoleOptionValue(option: HTMLElement): string {
+		return option.getAttribute('data-value') || option.getAttribute('aria-label') || option.textContent?.trim() || ''
 	}
 
 	private focusIfPlanned(element: FormControlElement, instruction: FillInstruction): void {
@@ -1328,17 +1577,74 @@ export class InteractionManager {
 			case 'radio':
 				return (element as HTMLInputElement).checked && this.matchesRadioValue(element as HTMLInputElement, expectedValue)
 
+			case 'combobox':
+				return this.verifyComboboxValue(element, expectedValue)
+
+			case 'listbox':
+				return this.verifyListboxValue(element, expectedValue)
+
+			case 'switch':
+				return element.getAttribute('aria-checked') === this.resolveSwitchState(element, expectedValue)?.toString()
+
+			case 'radiogroup':
+				return this.verifyAriaRadioGroupValue(element, expectedValue)
+
+			case 'spinbutton':
+				return this.verifySpinbuttonValue(element, expectedValue)
+
 			case 'select': {
 				const matchingOption = this.findMatchingOption(element as HTMLSelectElement, expectedValue)
 				return Boolean(matchingOption && (element as HTMLSelectElement).value === matchingOption.value)
 			}
 
 			default:
-				return element.value === expectedValue
+				return this.getElementValue(element) === expectedValue
 		}
 	}
 
-	private getNativeAdapter(controlKind: FieldControlKind): NativeAdapterDefinition | null {
+	private verifyComboboxValue(element: FormControlElement, expectedValue: string): boolean {
+		const normalizedExpectedValue = this.normalizeForMatch(expectedValue)
+		const activeDescendantId = element.getAttribute('aria-activedescendant')
+		const activeDescendant = activeDescendantId ? document.getElementById(activeDescendantId) : null
+		const activeText = activeDescendant?.textContent?.trim() || element.getAttribute('aria-valuetext') || ''
+
+		if (activeText && this.normalizeForMatch(activeText) === normalizedExpectedValue) {
+			return true
+		}
+
+		if (element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement) {
+			return this.normalizeForMatch(element.value) === normalizedExpectedValue
+		}
+
+		const selectedOption = this.getRoleOptions(element, this.resolveControlledPopup(element)).find(option => option.getAttribute('aria-selected') === 'true')
+		return Boolean(selectedOption && this.normalizeForMatch(this.getRoleOptionValue(selectedOption)) === normalizedExpectedValue)
+	}
+
+	private verifyListboxValue(element: FormControlElement, expectedValue: string): boolean {
+		const normalizedExpectedValue = this.normalizeForMatch(expectedValue)
+		return this.getRoleOptions(element, this.resolveControlledPopup(element)).some(option => {
+			return option.getAttribute('aria-selected') === 'true' &&
+				this.normalizeForMatch(this.getRoleOptionValue(option)) === normalizedExpectedValue
+		})
+	}
+
+	private verifyAriaRadioGroupValue(element: FormControlElement, expectedValue: string): boolean {
+		const normalizedExpectedValue = this.normalizeForMatch(expectedValue)
+		return this.getRoleOptions(element, null, ['radio']).some(option => {
+			return option.getAttribute('aria-checked') === 'true' &&
+				this.normalizeForMatch(this.getRoleOptionValue(option)) === normalizedExpectedValue
+		})
+	}
+
+	private verifySpinbuttonValue(element: FormControlElement, expectedValue: string): boolean {
+		if (element instanceof HTMLInputElement) {
+			return element.value === expectedValue
+		}
+
+		return this.normalizeForMatch(element.getAttribute('aria-valuenow') || '') === this.normalizeForMatch(expectedValue)
+	}
+
+	private getAdapter(controlKind: FieldControlKind): AdapterDefinition | null {
 		switch (controlKind) {
 			case 'text':
 			case 'date':
@@ -1360,6 +1666,21 @@ export class InteractionManager {
 
 			case 'radio':
 				return NATIVE_RADIO_ADAPTER
+
+			case 'combobox':
+				return ARIA_COMBOBOX_ADAPTER
+
+			case 'listbox':
+				return ARIA_LISTBOX_ADAPTER
+
+			case 'switch':
+				return ARIA_SWITCH_ADAPTER
+
+			case 'radiogroup':
+				return ARIA_RADIOGROUP_ADAPTER
+
+			case 'spinbutton':
+				return ARIA_SPINBUTTON_ADAPTER
 
 			default:
 				return null
@@ -1449,7 +1770,7 @@ export class InteractionManager {
 		}) || null
 	}
 
-	private resolveCheckboxState(value: string, element: HTMLInputElement): boolean {
+	private resolveCheckboxState(value: string, element?: HTMLInputElement): boolean {
 		const normalizedValue = this.normalizeForMatch(value)
 
 		if (['false', '0', 'no', 'off', 'unchecked'].includes(normalizedValue)) {
@@ -1460,7 +1781,35 @@ export class InteractionManager {
 			return true
 		}
 
-		return Boolean(element.value && this.normalizeForMatch(element.value) === normalizedValue)
+		return Boolean(element?.value && this.normalizeForMatch(element.value) === normalizedValue)
+	}
+
+	private resolveSwitchState(element: FormControlElement, desiredValue: string): boolean | null {
+		const normalizedDesiredValue = this.normalizeForMatch(desiredValue)
+		const onValue = element.getAttribute('data-on-value')
+		const offValue = element.getAttribute('data-off-value')
+
+		if (onValue && offValue) {
+			if (this.normalizeForMatch(onValue) === normalizedDesiredValue) {
+				return true
+			}
+
+			if (this.normalizeForMatch(offValue) === normalizedDesiredValue) {
+				return false
+			}
+
+			if (this.isExplicitBooleanState(normalizedDesiredValue)) {
+				return this.resolveCheckboxState(desiredValue)
+			}
+
+			return null
+		}
+
+		return this.resolveCheckboxState(desiredValue)
+	}
+
+	private isExplicitBooleanState(normalizedValue: string): boolean {
+		return ['false', '0', 'no', 'off', 'unchecked', 'true', '1', 'yes', 'on', 'checked'].includes(normalizedValue)
 	}
 
 	private matchesRadioValue(element: HTMLInputElement, desiredValue: string): boolean {
@@ -1486,9 +1835,23 @@ export class InteractionManager {
 		return value.trim().toLowerCase().replace(/\s+/g, ' ')
 	}
 
+	private getElementValue(element: FormControlElement): string {
+		if (element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement || element instanceof HTMLSelectElement) {
+			return element.value
+		}
+
+		return element.getAttribute('aria-valuetext') || element.getAttribute('data-value') || element.textContent?.trim() || ''
+	}
+
 	private getControlKind(element: FormControlElement): FieldControlKind {
+		const role = element.getAttribute('role')
+		if (role && ARIA_WIDGET_ROLES.has(role)) {
+			return role as FieldControlKind
+		}
+
 		if (element instanceof HTMLTextAreaElement) return 'textarea'
 		if (element instanceof HTMLSelectElement) return 'select'
+		if (!(element instanceof HTMLInputElement)) return 'unknown'
 
 		switch (element.type) {
 			case 'checkbox':
@@ -1517,7 +1880,8 @@ export class InteractionManager {
 	private isFormField(element: HTMLElement): element is FormControlElement {
 		return element instanceof HTMLInputElement ||
 			element instanceof HTMLTextAreaElement ||
-			element instanceof HTMLSelectElement
+			element instanceof HTMLSelectElement ||
+			Boolean(element.getAttribute('role') && ARIA_WIDGET_ROLES.has(element.getAttribute('role') || ''))
 	}
 
 	private delay(ms: number): Promise<void> {

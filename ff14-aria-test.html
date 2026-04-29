@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>FormFilla ARIA Widget Fixture</title>
+	<style>
+		body {
+			font-family: 'Segoe UI', sans-serif;
+			margin: 0;
+			padding: 24px;
+			background: #f5f7f4;
+			color: #1d2b23;
+		}
+
+		main {
+			max-width: 860px;
+			margin: 0 auto;
+			background: #fff;
+			padding: 28px;
+			border-radius: 18px;
+			box-shadow: 0 18px 48px rgba(20, 37, 29, 0.08);
+		}
+
+		h1 {
+			margin-top: 0;
+		}
+
+		.fixture-grid {
+			display: grid;
+			grid-template-columns: repeat(2, minmax(0, 1fr));
+			gap: 18px;
+		}
+
+		.fixture-card {
+			padding: 18px;
+			border: 1px solid #d9e2db;
+			border-radius: 14px;
+			background: #fbfcfa;
+		}
+
+		label,
+		.legend {
+			display: block;
+			font-weight: 600;
+			margin-bottom: 10px;
+		}
+
+		[role="combobox"],
+		[role="listbox"],
+		[role="switch"],
+		[role="spinbutton"] {
+			border: 1px solid #c0cdc4;
+			border-radius: 10px;
+			padding: 10px 12px;
+			background: white;
+		}
+
+		[role="combobox"],
+		[role="switch"],
+		[role="spinbutton"] {
+			cursor: pointer;
+		}
+
+		[role="option"],
+		[role="radio"] {
+			padding: 8px 10px;
+			border-radius: 8px;
+			cursor: pointer;
+		}
+
+		[role="option"][aria-selected="true"],
+		[role="radio"][aria-checked="true"] {
+			background: #dcefe1;
+			color: #19452c;
+		}
+
+		.popup {
+			margin-top: 10px;
+			padding: 8px;
+			border: 1px solid #d9e2db;
+			border-radius: 10px;
+			display: grid;
+			gap: 6px;
+			background: #ffffff;
+		}
+
+		.hidden {
+			display: none;
+		}
+
+		.help {
+			font-size: 13px;
+			color: #537061;
+			margin-top: 8px;
+		}
+
+		.result-row {
+			margin-top: 32px;
+			padding-top: 20px;
+			border-top: 1px solid #dde5df;
+			font-size: 14px;
+		}
+
+		pre {
+			margin: 8px 0 0;
+			padding: 14px;
+			background: #f3f7f4;
+			border-radius: 12px;
+			overflow-x: auto;
+		}
+
+		@media (max-width: 720px) {
+			.fixture-grid {
+				grid-template-columns: 1fr;
+			}
+		}
+	</style>
+</head>
+
+<body>
+	<main>
+		<h1>ARIA Widget Fixture</h1>
+		<p>This fixture exercises role-aware widget filling for FF-14.</p>
+
+		<form id="aria-fixture-form">
+			<div class="fixture-grid">
+				<section class="fixture-card">
+					<label id="title-label" for="title-combobox">Job Title</label>
+					<div id="title-combobox" role="combobox" name="jobTitle" data-field="job-title" aria-labelledby="title-label" aria-controls="title-options"
+						aria-expanded="false" aria-activedescendant="title-option-engineer" tabindex="0">Designer</div>
+					<div id="title-options" class="popup hidden" role="listbox" aria-label="Job title options">
+						<div id="title-option-designer" role="option" aria-selected="true" data-value="Designer">Designer</div>
+						<div id="title-option-engineer" role="option" aria-selected="false" data-value="Engineer">Engineer</div>
+						<div id="title-option-manager" role="option" aria-selected="false" data-value="Manager">Manager</div>
+					</div>
+					<p class="help">Maps `company.title` through a combobox popup.</p>
+				</section>
+
+				<section class="fixture-card">
+					<label id="department-label">Department</label>
+					<div id="department-listbox" role="listbox" name="department" data-field="department" aria-labelledby="department-label" tabindex="0">
+						<div role="option" aria-selected="false" data-value="Engineering">Engineering</div>
+						<div role="option" aria-selected="false" data-value="Design">Design</div>
+						<div role="option" aria-selected="false" data-value="QA">QA</div>
+					</div>
+					<p class="help">Maps `company.department` through a standalone listbox.</p>
+				</section>
+
+				<section class="fixture-card">
+					<label id="department-switch-label">Department</label>
+					<button type="button" id="department-switch" role="switch" name="departmentToggle" data-field="department" aria-labelledby="department-switch-label" aria-checked="false"
+						data-off-value="Engineering" data-on-value="QA">Engineering</button>
+					<p class="help">Maps `company.department` through a named-state ARIA switch.</p>
+				</section>
+
+				<section class="fixture-card">
+					<div class="legend" id="gender-label">Gender</div>
+					<div id="gender-group" role="radiogroup" name="gender" data-field="gender" aria-labelledby="gender-label">
+						<div role="radio" tabindex="0" aria-checked="false" data-value="Female">Female</div>
+						<div role="radio" tabindex="0" aria-checked="false" data-value="Male">Male</div>
+						<div role="radio" tabindex="0" aria-checked="false" data-value="Non-binary">Non-binary</div>
+					</div>
+					<p class="help">Maps `person.gender` through an ARIA radiogroup.</p>
+				</section>
+
+				<section class="fixture-card">
+					<label id="age-label">Age</label>
+					<div id="age-spinbutton" role="spinbutton" name="age" data-field="age" aria-labelledby="age-label" aria-valuemin="18" aria-valuemax="80"
+						aria-valuenow="18" aria-valuetext="18" data-step="1" tabindex="0">18</div>
+					<p class="help">Maps `person.age` through keyboard-driven spinbutton updates.</p>
+				</section>
+			</div>
+		</form>
+
+		<div class="result-row">
+			<strong>Current state:</strong>
+			<pre id="fixture-state"></pre>
+		</div>
+	</main>
+
+	<script>
+		const stateEl = document.getElementById('fixture-state');
+
+		function updateState() {
+			const selectedTitle = document.querySelector('#title-options [role="option"][aria-selected="true"]')?.getAttribute('data-value');
+			const selectedDepartment = document.querySelector('#department-listbox [role="option"][aria-selected="true"]')?.getAttribute('data-value');
+			const switchState = document.getElementById('department-switch').textContent;
+			const selectedGender = document.querySelector('#gender-group [role="radio"][aria-checked="true"]')?.getAttribute('data-value');
+			const age = document.getElementById('age-spinbutton').getAttribute('aria-valuenow');
+
+			stateEl.textContent = JSON.stringify({
+				title: selectedTitle,
+				department: selectedDepartment,
+				switchDepartment: switchState,
+				gender: selectedGender,
+				age
+			}, null, 2);
+		}
+
+		const combobox = document.getElementById('title-combobox');
+		const comboboxPopup = document.getElementById('title-options');
+		combobox.addEventListener('click', () => {
+			const isExpanded = combobox.getAttribute('aria-expanded') === 'true';
+			combobox.setAttribute('aria-expanded', isExpanded ? 'false' : 'true');
+			comboboxPopup.classList.toggle('hidden', isExpanded);
+		});
+
+		comboboxPopup.querySelectorAll('[role="option"]').forEach(option => {
+			option.addEventListener('click', () => {
+				comboboxPopup.querySelectorAll('[role="option"]').forEach(node => node.setAttribute('aria-selected', 'false'));
+				option.setAttribute('aria-selected', 'true');
+				combobox.textContent = option.getAttribute('data-value');
+				combobox.setAttribute('aria-activedescendant', option.id);
+				combobox.setAttribute('aria-expanded', 'false');
+				comboboxPopup.classList.add('hidden');
+				updateState();
+			});
+		});
+
+		document.querySelectorAll('#department-listbox [role="option"]').forEach(option => {
+			option.addEventListener('click', () => {
+				document.querySelectorAll('#department-listbox [role="option"]').forEach(node => node.setAttribute('aria-selected', 'false'));
+				option.setAttribute('aria-selected', 'true');
+				updateState();
+			});
+		});
+
+		const switchEl = document.getElementById('department-switch');
+		switchEl.addEventListener('click', () => {
+			const nextState = switchEl.getAttribute('aria-checked') !== 'true';
+			switchEl.setAttribute('aria-checked', nextState ? 'true' : 'false');
+			switchEl.textContent = nextState ? switchEl.getAttribute('data-on-value') : switchEl.getAttribute('data-off-value');
+			updateState();
+		});
+
+		document.querySelectorAll('#gender-group [role="radio"]').forEach(option => {
+			option.addEventListener('click', () => {
+				document.querySelectorAll('#gender-group [role="radio"]').forEach(node => node.setAttribute('aria-checked', 'false'));
+				option.setAttribute('aria-checked', 'true');
+				updateState();
+			});
+		});
+
+		const spinbutton = document.getElementById('age-spinbutton');
+		spinbutton.addEventListener('keydown', (event) => {
+			if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') {
+				return;
+			}
+
+			event.preventDefault();
+			const current = Number(spinbutton.getAttribute('aria-valuenow') || '18');
+			const delta = event.key === 'ArrowUp' ? 1 : -1;
+			const next = Math.max(18, Math.min(80, current + delta));
+			spinbutton.setAttribute('aria-valuenow', String(next));
+			spinbutton.setAttribute('aria-valuetext', String(next));
+			spinbutton.textContent = String(next);
+			updateState();
+		});
+
+		updateState();
+	</script>
+</body>
+
+</html>
