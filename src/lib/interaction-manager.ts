@@ -5,6 +5,7 @@ import {
 	type ExtensionSettings,
 	type FieldCandidate,
 	type FieldControlKind,
+	type FieldDebugTrace,
 	type FieldInference,
 	type FieldInfo,
 	type FieldReviewItem,
@@ -21,7 +22,7 @@ import {
 import { FieldDetector } from './field-detector'
 import { resolveProfileValueForFieldKey } from './profiles'
 import { StorageService } from './storage'
-import { sanitizeFieldValue } from './security'
+import { createDebugValuePreview, sanitizeFieldValue, summarizeDebugText } from './security'
 
 function isFieldValueResponse(response: BackgroundResponseMessage | undefined): response is { value: string } {
 	return Boolean(response && 'value' in response)
@@ -560,7 +561,9 @@ export class InteractionManager {
 					'failed',
 					plannedFill.instruction.adapterId,
 					`Field detached before fill attempt ${attemptNumber}`
-				)
+				),
+				plannedFill.instruction,
+				attemptNumber
 			)
 		}
 
@@ -572,7 +575,9 @@ export class InteractionManager {
 			plannedFill.candidate.element,
 			plannedFill.candidate.controlKind,
 			plannedFill.instruction
-			)
+			),
+			plannedFill.instruction,
+			attemptNumber
 		)
 
 		if (executionResult.status !== 'filled') {
@@ -591,7 +596,9 @@ export class InteractionManager {
 					'failed',
 					plannedFill.instruction.adapterId,
 					'Fill was cancelled before verification completed'
-				)
+				),
+				plannedFill.instruction,
+				attemptNumber
 			)
 		}
 
@@ -609,7 +616,9 @@ export class InteractionManager {
 					observedMutation
 						? 'Field detached after a dynamic re-render before verification completed'
 						: 'Post-fill verification could not confirm the field after settlement'
-				)
+				),
+				plannedFill.instruction,
+				attemptNumber
 			)
 		}
 
@@ -631,7 +640,9 @@ export class InteractionManager {
 				message: observedMutation
 					? 'Filled successfully after a dynamic re-render'
 					: executionResult.message
-				}
+				},
+				refreshedFill.instruction,
+				attemptNumber
 			)
 		}
 
@@ -647,7 +658,9 @@ export class InteractionManager {
 				observedMutation
 					? 'Post-fill value was reset after a dynamic re-render'
 					: 'Post-fill value did not persist after the verification window'
-			)
+			),
+			plannedFill.instruction,
+			attemptNumber
 		)
 	}
 
@@ -724,9 +737,19 @@ export class InteractionManager {
 
 	private finalizeRetryQueueFailure(entry: RetryQueueEntry): FillResult {
 		const maxAttempts = entry.plannedFill.instruction.retryPolicy.maxAttempts
+		const debugTrace = entry.lastResult.debug
 		return {
 			...entry.lastResult,
-			message: `${entry.lastResult.message || 'Fill failed'} after ${entry.attemptsUsed}/${maxAttempts} attempts`
+			message: `${entry.lastResult.message || 'Fill failed'} after ${entry.attemptsUsed}/${maxAttempts} attempts`,
+			debug: debugTrace
+				? {
+					...debugTrace,
+					outcomeMessage: `${entry.lastResult.message || 'Fill failed'} after ${entry.attemptsUsed}/${maxAttempts} attempts`,
+					retryAttemptsUsed: entry.attemptsUsed,
+					retryMaxAttempts: maxAttempts,
+					retryStrategy: entry.plannedFill.instruction.retryPolicy.strategy
+				}
+				: undefined
 		}
 	}
 
@@ -916,18 +939,31 @@ export class InteractionManager {
 		candidate: FieldCandidate,
 		inference: FieldInference,
 		profileData: ProfileData,
-		result: FillResult
+		result: FillResult,
+		instruction?: FillInstruction,
+		attemptNumber: number = 0
 	): FillResult {
+		const debugTrace = this.createDebugTrace(
+			candidate,
+			inference,
+			profileData,
+			result,
+			instruction,
+			attemptNumber
+		)
+
 		if (result.status === 'filled') {
 			return {
 				...result,
-				review: this.createReviewItem(candidate, inference, profileData, result.status, result.message || 'Filled successfully')
+				review: this.createReviewItem(candidate, inference, profileData, result.status, result.message || 'Filled successfully', debugTrace),
+				debug: debugTrace
 			}
 		}
 
 		return {
 			...result,
-			review: this.createReviewItem(candidate, inference, profileData, result.status, result.message || result.status)
+			review: this.createReviewItem(candidate, inference, profileData, result.status, result.message || result.status, debugTrace),
+			debug: debugTrace
 		}
 	}
 
@@ -936,7 +972,8 @@ export class InteractionManager {
 		inference: FieldInference,
 		profileData: ProfileData,
 		status: FillResult['status'],
-		message: string
+		message: string,
+		debugTrace?: FieldDebugTrace
 	): FieldReviewItem {
 		const resultFieldKey = this.getResultFieldKey(candidate, inference)
 		const label = this.getCandidateReviewLabel(candidate)
@@ -948,7 +985,8 @@ export class InteractionManager {
 			confidence: inference.confidence,
 			confidenceBand: inference.status,
 			selectedValuePreview: this.getSelectedValuePreview(resultFieldKey, profileData),
-			message
+			message,
+			debug: debugTrace
 		}
 	}
 
@@ -970,31 +1008,57 @@ export class InteractionManager {
 			return undefined
 		}
 
-		const normalizedFieldKey = fieldKey.toLowerCase()
-		if (normalizedFieldKey.includes('password') || normalizedFieldKey.includes('cvv')) {
-			return 'Hidden for safety'
-		}
+		return createDebugValuePreview(rawValue, fieldKey)
+	}
 
-		if (normalizedFieldKey.includes('cardnumber')) {
-			return rawValue.length > 4
-				? `•••• ${rawValue.slice(-4)}`
-				: 'Card value available'
-		}
+	private createDebugTrace(
+		candidate: FieldCandidate,
+		inference: FieldInference,
+		profileData: ProfileData,
+		result: FillResult,
+		instruction?: FillInstruction,
+		attemptNumber: number = 0
+	): FieldDebugTrace {
+		const resultFieldKey = this.getResultFieldKey(candidate, inference)
+		const resolvedValue = resolveProfileValueForFieldKey(profileData, resultFieldKey)
+		const selectedValue = instruction?.normalizedValue || this.toScalarString(resolvedValue?.rawValue ?? '')
+		const maxAttempts = instruction?.retryPolicy.maxAttempts ?? DEFAULT_FILL_RETRY_POLICY.maxAttempts
+		const retryStrategy = instruction?.retryPolicy.strategy ?? DEFAULT_FILL_RETRY_POLICY.strategy
 
-		if (
-			normalizedFieldKey.includes('ssn') ||
-			normalizedFieldKey.includes('nationalid') ||
-			normalizedFieldKey.includes('passport')
-		) {
-			return rawValue.length > 2
-				? `${'•'.repeat(Math.max(rawValue.length - 2, 2))}${rawValue.slice(-2)}`
-				: 'Sensitive value available'
+		return {
+			candidateId: result.candidateId,
+			label: this.getCandidateReviewLabel(candidate),
+			fieldKey: result.fieldKey,
+			controlKind: candidate.controlKind,
+			status: result.status,
+			confidence: inference.confidence,
+			confidenceBand: inference.status,
+			adapterId: result.adapterId,
+			outcomeMessage: result.message || result.status,
+			reasons: inference.reasons.slice(0, 6),
+			alternatives: inference.alternatives.map(alternative => ({
+				fieldKey: alternative.fieldKey,
+				confidence: alternative.confidence
+			})),
+			evidence: candidate.evidence
+				.slice()
+				.sort((left, right) => (right.weight ?? 0) - (left.weight ?? 0))
+				.slice(0, 6)
+				.map(evidence => ({
+					source: evidence.source,
+					sample: summarizeDebugText(evidence.raw),
+					weight: evidence.weight ?? 0
+				})),
+			selectedValuePreview: selectedValue
+				? createDebugValuePreview(selectedValue, resultFieldKey)
+				: undefined,
+			appliedValuePreview: result.appliedValue
+				? createDebugValuePreview(result.appliedValue, resultFieldKey)
+				: undefined,
+			retryAttemptsUsed: attemptNumber,
+			retryMaxAttempts: maxAttempts,
+			retryStrategy
 		}
-
-		const sanitizedValue = sanitizeFieldValue(rawValue)
-		return sanitizedValue.length > 36
-			? `${sanitizedValue.slice(0, 33)}...`
-			: sanitizedValue
 	}
 
 	private createBlockedFillResult(

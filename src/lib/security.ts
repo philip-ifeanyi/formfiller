@@ -95,6 +95,86 @@ export function sanitizeFieldValue(value: string, fieldType?: string): string {
 	}
 }
 
+function normalizeDebugFieldKey(fieldKey?: string): string {
+	return typeof fieldKey === 'string'
+		? fieldKey.replace(/[^a-z]/gi, '').toLowerCase()
+		: ''
+}
+
+function maskVisibleSuffix(value: string, visibleCount: number): string {
+	if (value.length <= visibleCount) {
+		return '•'.repeat(Math.max(value.length, 2))
+	}
+
+	return `${'•'.repeat(Math.max(value.length - visibleCount, 2))}${value.slice(-visibleCount)}`
+}
+
+export function createDebugValuePreview(value: string, fieldKey?: string, maxLength: number = 36): string {
+	if (typeof value !== 'string') return ''
+
+	const trimmedValue = value.trim()
+	if (!trimmedValue) return ''
+
+	const normalizedFieldKey = normalizeDebugFieldKey(fieldKey)
+
+	if (normalizedFieldKey.includes('password') || normalizedFieldKey.includes('cvv')) {
+		return 'Hidden for safety'
+	}
+
+	if (normalizedFieldKey.includes('cardnumber')) {
+		return trimmedValue.length > 4
+			? `•••• ${trimmedValue.slice(-4)}`
+			: 'Card value available'
+	}
+
+	if (
+		normalizedFieldKey.includes('ssn') ||
+		normalizedFieldKey.includes('nationalid') ||
+		normalizedFieldKey.includes('passport')
+	) {
+		return maskVisibleSuffix(trimmedValue, 2)
+	}
+
+	if (normalizedFieldKey.includes('email')) {
+		const [localPart, domain = ''] = trimmedValue.split('@')
+		if (!domain) {
+			return maskVisibleSuffix(trimmedValue, 2)
+		}
+
+		const visibleLocal = localPart.slice(0, 1)
+		return `${visibleLocal || '•'}•••@${domain}`
+	}
+
+	if (normalizedFieldKey.includes('phone')) {
+		const digitsOnly = trimmedValue.replace(/\D/g, '')
+		if (digitsOnly.length >= 4) {
+			return `•••${digitsOnly.slice(-4)}`
+		}
+
+		return maskVisibleSuffix(trimmedValue, 2)
+	}
+
+	if (normalizedFieldKey.includes('dateofbirth')) {
+		return 'Birth date available'
+	}
+
+	const sanitizedValue = sanitizeFieldValue(trimmedValue)
+	return sanitizedValue.length > maxLength
+		? `${sanitizedValue.slice(0, Math.max(maxLength - 3, 1))}...`
+		: sanitizedValue
+}
+
+export function summarizeDebugText(input: string, maxLength: number = 44): string {
+	const sanitized = sanitizeText(input || '').replace(/\s+/g, ' ').trim()
+	if (!sanitized) {
+		return ''
+	}
+
+	return sanitized.length > maxLength
+		? `${sanitized.slice(0, Math.max(maxLength - 3, 1))}...`
+		: sanitized
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === 'object' && value !== null && !Array.isArray(value)
 }

@@ -3,6 +3,7 @@ import { StorageService } from '@/lib/storage'
 import {
 	type ContentCommandMessage,
 	type ContentResponseMessage,
+	type FieldDebugTrace,
 	type FieldReviewItem,
 	type FillFormResponseMessage,
 	type FillResult,
@@ -25,6 +26,7 @@ type PopupElements = {
 	activeProfileMeta: HTMLElement
 	autofillButton: HTMLButtonElement
 	reviewButton: HTMLButtonElement
+	debugToggleButton: HTMLButtonElement
 	refreshButton: HTMLButtonElement
 	openOptionsButton: HTMLButtonElement
 	summaryPanel: HTMLElement
@@ -32,6 +34,10 @@ type PopupElements = {
 	summaryHeadline: HTMLElement
 	summaryStats: HTMLElement
 	summaryIssues: HTMLElement
+	debugPanel: HTMLElement
+	debugTitle: HTMLElement
+	debugStatus: HTMLElement
+	debugList: HTMLElement
 	toast: HTMLElement
 }
 
@@ -52,15 +58,20 @@ function isReviewFieldsResponse(response: ContentResponseMessage | null): respon
 }
 
 class PopupUI {
+	private storage: StorageService
 	private profileManager: ProfileManager
 	private elements: PopupElements
 	private profiles: Profile[] = []
 	private activeProfileId = ''
 	private activeTabId: number | null = null
 	private pageReadiness: PageReadiness = 'loading'
+	private debugModeEnabled = false
+	private lastDebugTitle = 'Debug Trace'
+	private lastDebugTraces: FieldDebugTrace[] = []
 
 	constructor() {
 		const storage = StorageService.getInstance()
+		this.storage = storage
 		this.profileManager = new ProfileManager(storage)
 		this.elements = this.getElements()
 		void this.initialize()
@@ -68,6 +79,7 @@ class PopupUI {
 
 	private async initialize(): Promise<void> {
 		this.renderPageStatus('loading', 'Checking the active page for injectable forms.', 0, 0)
+		await this.loadSettings()
 		await this.loadProfiles()
 		await this.refreshPageStatus()
 		this.setupEventListeners()
@@ -84,6 +96,7 @@ class PopupUI {
 			activeProfileMeta: document.getElementById('active-profile-meta')!,
 			autofillButton: document.getElementById('autofill-page') as HTMLButtonElement,
 			reviewButton: document.getElementById('review-fields') as HTMLButtonElement,
+			debugToggleButton: document.getElementById('toggle-debug') as HTMLButtonElement,
 			refreshButton: document.getElementById('refresh-status') as HTMLButtonElement,
 			openOptionsButton: document.getElementById('open-options') as HTMLButtonElement,
 			summaryPanel: document.getElementById('summary-panel')!,
@@ -91,8 +104,19 @@ class PopupUI {
 			summaryHeadline: document.getElementById('summary-headline')!,
 			summaryStats: document.getElementById('summary-stats')!,
 			summaryIssues: document.getElementById('summary-issues')!,
+			debugPanel: document.getElementById('debug-panel')!,
+			debugTitle: document.getElementById('debug-title')!,
+			debugStatus: document.getElementById('debug-status')!,
+			debugList: document.getElementById('debug-list')!,
 			toast: document.getElementById('toast')!
 		}
+	}
+
+	private async loadSettings(): Promise<void> {
+		const settings = await this.storage.getSettings()
+		this.debugModeEnabled = Boolean(settings.debugMode)
+		this.renderDebugToggle()
+		this.renderDebugPanel()
 	}
 
 	private async loadProfiles(): Promise<void> {
@@ -140,6 +164,9 @@ class PopupUI {
 		})
 		this.elements.reviewButton.addEventListener('click', () => {
 			void this.reviewPageFields()
+		})
+		this.elements.debugToggleButton.addEventListener('click', () => {
+			void this.toggleDebugMode()
 		})
 		this.elements.refreshButton.addEventListener('click', () => {
 			void this.refreshPageStatus()
@@ -284,6 +311,7 @@ class PopupUI {
 		}
 
 		if (isFillFormResponse(response)) {
+			this.captureDebugTraces('Autofill Trace', this.extractDebugTracesFromResults(response.results))
 			this.renderRunSummary(response.results)
 			this.showToast('Autofill run completed')
 			await this.refreshPageStatus()
@@ -318,9 +346,19 @@ class PopupUI {
 		}
 
 		if (isReviewFieldsResponse(response)) {
+			this.captureDebugTraces('Review Trace', this.extractDebugTracesFromReviewItems(response.items))
 			this.renderReviewItems(response.items)
 			this.showToast(response.items.length > 0 ? 'Review surface updated' : 'No unresolved fields detected')
 		}
+	}
+
+	private async toggleDebugMode(): Promise<void> {
+		const nextState = !this.debugModeEnabled
+		await this.storage.saveSettings({ debugMode: nextState })
+		this.debugModeEnabled = nextState
+		this.renderDebugToggle()
+		this.renderDebugPanel()
+		this.showToast(nextState ? 'Debug mode enabled' : 'Debug mode disabled')
 	}
 
 	private openSettings(): void {
@@ -412,6 +450,125 @@ class PopupUI {
 		this.renderIssueItems(items)
 	}
 
+	private captureDebugTraces(title: string, traces: FieldDebugTrace[]): void {
+		this.lastDebugTitle = title
+		this.lastDebugTraces = traces
+		this.renderDebugPanel()
+	}
+
+	private renderDebugToggle(): void {
+		this.elements.debugToggleButton.textContent = this.debugModeEnabled ? 'Debug Mode On' : 'Debug Mode Off'
+		this.elements.debugToggleButton.classList.toggle('is-active', this.debugModeEnabled)
+	}
+
+	private renderDebugPanel(): void {
+		if (!this.debugModeEnabled) {
+			this.elements.debugPanel.hidden = true
+			return
+		}
+
+		this.elements.debugPanel.hidden = false
+		this.elements.debugTitle.textContent = this.lastDebugTitle
+		this.elements.debugList.innerHTML = ''
+
+		if (this.lastDebugTraces.length === 0) {
+			this.elements.debugStatus.textContent = 'Run autofill or review unresolved fields to inspect redacted traces.'
+			return
+		}
+
+		const visibleTraces = this.lastDebugTraces.slice(0, 6)
+		this.elements.debugStatus.textContent = visibleTraces.length < this.lastDebugTraces.length
+			? `Showing ${visibleTraces.length} of ${this.lastDebugTraces.length} traces.`
+			: `${visibleTraces.length} redacted traces captured.`
+
+		visibleTraces.forEach(trace => {
+			const card = document.createElement('article')
+			card.className = 'trace-card'
+
+			const header = document.createElement('div')
+			header.className = 'trace-header'
+
+			const label = document.createElement('strong')
+			label.textContent = trace.label
+
+			const badge = document.createElement('span')
+			badge.className = 'trace-badge'
+			badge.textContent = `${this.formatStatusLabel(trace.status)} · ${trace.confidence.toFixed(2)}`
+
+			header.append(label, badge)
+
+			const meta = document.createElement('div')
+			meta.className = 'trace-meta'
+			meta.textContent = `Adapter ${trace.adapterId} · ${this.formatConfidenceBand(trace.confidenceBand)} · Retry ${trace.retryAttemptsUsed}/${trace.retryMaxAttempts} ${trace.retryStrategy}`
+
+			const outcome = document.createElement('p')
+			outcome.className = 'trace-copy'
+			outcome.textContent = trace.outcomeMessage
+
+			card.append(header, meta, outcome)
+
+			const valueRow = document.createElement('div')
+			valueRow.className = 'trace-row'
+			valueRow.append(
+				this.createTracePill(`Planned ${trace.selectedValuePreview || 'n/a'}`),
+				this.createTracePill(`Applied ${trace.appliedValuePreview || 'n/a'}`)
+			)
+			card.appendChild(valueRow)
+
+			if (trace.reasons.length > 0) {
+				const reasonsRow = document.createElement('div')
+				reasonsRow.className = 'trace-row'
+				trace.reasons.slice(0, 4).forEach(reason => {
+					reasonsRow.appendChild(this.createTracePill(reason))
+				})
+				card.appendChild(reasonsRow)
+			}
+
+			if (trace.alternatives.length > 0) {
+				const alternativesRow = document.createElement('div')
+				alternativesRow.className = 'trace-row'
+				trace.alternatives.slice(0, 3).forEach(alternative => {
+					alternativesRow.appendChild(
+						this.createTracePill(`Alt ${this.formatReviewFieldKey(alternative.fieldKey)} ${alternative.confidence.toFixed(2)}`)
+					)
+				})
+				card.appendChild(alternativesRow)
+			}
+
+			if (trace.evidence.length > 0) {
+				const evidenceRow = document.createElement('div')
+				evidenceRow.className = 'trace-row'
+				trace.evidence.slice(0, 4).forEach(evidence => {
+					evidenceRow.appendChild(
+						this.createTracePill(`${this.formatEvidenceSource(evidence.source)}: ${evidence.sample}`)
+					)
+				})
+				card.appendChild(evidenceRow)
+			}
+
+			this.elements.debugList.appendChild(card)
+		})
+	}
+
+	private createTracePill(text: string): HTMLElement {
+		const pill = document.createElement('span')
+		pill.className = 'trace-pill'
+		pill.textContent = text
+		return pill
+	}
+
+	private extractDebugTracesFromResults(results: FillResult[]): FieldDebugTrace[] {
+		return results
+			.map(result => result.debug)
+			.filter((trace): trace is FieldDebugTrace => Boolean(trace))
+	}
+
+	private extractDebugTracesFromReviewItems(items: FieldReviewItem[]): FieldDebugTrace[] {
+		return items
+			.map(item => item.debug)
+			.filter((trace): trace is FieldDebugTrace => Boolean(trace))
+	}
+
 	private renderIssueItems(items: FieldReviewItem[]): void {
 		this.elements.summaryIssues.innerHTML = ''
 
@@ -476,6 +633,16 @@ class PopupUI {
 
 	private formatConfidenceBand(confidenceBand: string): string {
 		return confidenceBand
+			.replace(/-/g, ' ')
+			.replace(/\b\w/g, character => character.toUpperCase())
+	}
+
+	private formatStatusLabel(status: string): string {
+		return status.replace(/\b\w/g, character => character.toUpperCase())
+	}
+
+	private formatEvidenceSource(source: string): string {
+		return source
 			.replace(/-/g, ' ')
 			.replace(/\b\w/g, character => character.toUpperCase())
 	}

@@ -270,6 +270,37 @@ export interface FillInstruction {
 	retryPolicy: FillRetryPolicy
 }
 
+export interface FieldDebugAlternative {
+	fieldKey: CanonicalFieldKey
+	confidence: number
+}
+
+export interface FieldDebugEvidenceItem {
+	source: FieldEvidenceSource
+	sample: string
+	weight: number
+}
+
+export interface FieldDebugTrace {
+	candidateId: string
+	label: string
+	fieldKey: CanonicalFieldKey
+	controlKind: FieldControlKind
+	status: FillResultStatus
+	confidence: number
+	confidenceBand: FieldInferenceStatus
+	adapterId: string
+	outcomeMessage: string
+	reasons: string[]
+	alternatives: FieldDebugAlternative[]
+	evidence: FieldDebugEvidenceItem[]
+	selectedValuePreview?: string
+	appliedValuePreview?: string
+	retryAttemptsUsed: number
+	retryMaxAttempts: number
+	retryStrategy: FillRetryPolicy['strategy']
+}
+
 export interface FieldReviewItem {
 	candidateId: string
 	fieldKey: CanonicalFieldKey
@@ -279,6 +310,7 @@ export interface FieldReviewItem {
 	confidenceBand: FieldInferenceStatus
 	selectedValuePreview?: string
 	message: string
+	debug?: FieldDebugTrace
 }
 
 export interface FillResult {
@@ -290,6 +322,7 @@ export interface FillResult {
 	verified: boolean
 	message?: string
 	review?: FieldReviewItem
+	debug?: FieldDebugTrace
 }
 
 export type LegacyFieldPath = `${string}.${string}`

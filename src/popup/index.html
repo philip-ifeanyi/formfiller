@@ -245,6 +245,11 @@
 			color: var(--ink);
 		}
 
+		.secondary-btn.is-active {
+			background: var(--accent-soft);
+			color: var(--accent);
+		}
+
 		.primary-btn:hover,
 		.secondary-btn:hover {
 			text-align: center;
@@ -330,6 +335,75 @@
 			background: var(--accent-soft);
 		}
 
+		.debug-panel[hidden] {
+			display: none;
+		}
+
+		.debug-status {
+			margin: 0 0 12px;
+			color: var(--muted);
+			font-size: 12px;
+		}
+
+		.debug-list {
+			display: flex;
+			flex-direction: column;
+			gap: 10px;
+		}
+
+		.trace-card {
+			display: flex;
+			flex-direction: column;
+			gap: 8px;
+			padding: 12px;
+			border-radius: 12px;
+			background: var(--paper);
+			border: 1px solid rgba(27, 42, 34, 0.08);
+		}
+
+		.trace-header {
+			display: flex;
+			justify-content: space-between;
+			align-items: center;
+			gap: 8px;
+		}
+
+		.trace-badge {
+			display: inline-flex;
+			align-items: center;
+			justify-content: center;
+			padding: 3px 8px;
+			border-radius: 999px;
+			background: rgba(27, 42, 34, 0.08);
+			font-size: 11px;
+			font-weight: 700;
+			white-space: nowrap;
+		}
+
+		.trace-meta,
+		.trace-copy {
+			margin: 0;
+			font-size: 12px;
+			color: var(--muted);
+		}
+
+		.trace-row {
+			display: flex;
+			flex-wrap: wrap;
+			gap: 6px;
+		}
+
+		.trace-pill {
+			display: inline-flex;
+			align-items: center;
+			padding: 4px 8px;
+			border-radius: 999px;
+			background: #fff;
+			border: 1px solid rgba(27, 42, 34, 0.08);
+			font-size: 11px;
+			color: var(--ink);
+		}
+
 		.toast {
 			position: fixed;
 			right: 18px;
@@ -405,6 +479,7 @@
 			<button class="primary-btn" id="autofill-page">Autofill Current Page</button>
 			<div class="secondary-actions">
 				<button class="secondary-btn" id="review-fields">Review Unresolved</button>
+				<button class="secondary-btn" id="toggle-debug">Debug Mode Off</button>
 			</div>
 			<div class="secondary-actions">
 				<button class="secondary-btn" id="refresh-status">Refresh Status</button>
@@ -417,6 +492,12 @@
 			<div id="summary-headline">No autofill run yet.</div>
 			<div class="summary-stats" id="summary-stats"></div>
 			<ul class="issue-list" id="summary-issues"></ul>
+		</section>
+
+		<section class="panel debug-panel" id="debug-panel" hidden>
+			<h2 id="debug-title">Debug Trace</h2>
+			<p class="debug-status" id="debug-status">Run autofill or review unresolved fields to inspect redacted traces.</p>
+			<div class="debug-list" id="debug-list"></div>
 		</section>
 
 		<footer>

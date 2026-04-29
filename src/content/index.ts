@@ -6,6 +6,7 @@ import {
 	type BackgroundResponseMessage,
 	type ContentCommandMessage,
 	type ContentResponseMessage,
+	type FieldDebugTrace,
 	type ExtensionSettings,
 	type FieldReviewItem,
 	type FieldInfo,
@@ -38,6 +39,7 @@ export class FormFillaContent {
 	private floatingActionButtonBadge: HTMLSpanElement | null = null
 	private floatingActionButtonLabel: HTMLSpanElement | null = null
 	private isPageFillInProgress = false
+	private debugModeEnabled = false
 
 	constructor() {
 		this.fieldDetector = new FieldDetector()
@@ -90,6 +92,10 @@ export class FormFillaContent {
 		const typedMessage = message as ContentCommandMessage
 
 		try {
+			if (typedMessage.type === 'fillForm' || typedMessage.type === 'reviewFields') {
+				await this.loadPageControlSettings()
+			}
+
 			switch (typedMessage.type) {
 				case 'fillField':
 					this.interactionManager.handleMessage(typedMessage)
@@ -100,15 +106,17 @@ export class FormFillaContent {
 					const results = typedMessage.profileData
 						? await this.handleFormFillRequest(typedMessage.profileData)
 						: await this.fillAllFormsOnPage()
+					this.logDebugTraces('fill', this.extractDebugTracesFromResults(results))
 					sendResponse({ success: true, results })
 					break
 
-					case 'reviewFields':
-						const items = typedMessage.profileData
-							? this.reviewAllFormsOnPage(typedMessage.profileData)
-							: await this.reviewAllFormsWithDefaultProfile()
-						sendResponse({ success: true, items })
-						break
+				case 'reviewFields':
+					const items = typedMessage.profileData
+						? this.reviewAllFormsOnPage(typedMessage.profileData)
+						: await this.reviewAllFormsWithDefaultProfile()
+					this.logDebugTraces('review', this.extractDebugTracesFromReviewItems(items))
+					sendResponse({ success: true, items })
+					break
 
 				case 'getFormFields':
 					const forms = document.querySelectorAll('form')
@@ -174,6 +182,7 @@ export class FormFillaContent {
 		}
 
 		this.pageControlsEnabled = response.settings.showButtons && response.settings.autoFillEnabled
+		this.debugModeEnabled = Boolean(response.settings.debugMode)
 	}
 
 	private setupFormDetection(): void {
@@ -486,11 +495,13 @@ export class FormFillaContent {
 			return
 		}
 
+		await this.loadPageControlSettings()
 		this.isPageFillInProgress = true
 		this.updateFloatingActionButton()
 
 		try {
 			const results = await this.fillAllFormsOnPage()
+			this.logDebugTraces('floating-fill', this.extractDebugTracesFromResults(results))
 			if (results.length === 0) {
 				return
 			}
@@ -626,6 +637,40 @@ export class FormFillaContent {
 		}
 
 		return isProfileDataResponse(response) ? response.profileData : null
+	}
+
+	private extractDebugTracesFromResults(results: FillResult[]): FieldDebugTrace[] {
+		return results
+			.map(result => result.debug)
+			.filter((trace): trace is FieldDebugTrace => Boolean(trace))
+	}
+
+	private extractDebugTracesFromReviewItems(items: FieldReviewItem[]): FieldDebugTrace[] {
+		return items
+			.map(item => item.debug)
+			.filter((trace): trace is FieldDebugTrace => Boolean(trace))
+	}
+
+	private logDebugTraces(channel: 'fill' | 'review' | 'floating-fill', traces: FieldDebugTrace[]): void {
+		if (!this.debugModeEnabled || traces.length === 0) {
+			return
+		}
+
+		const summaryRows = traces.map(trace => ({
+			label: trace.label,
+			status: trace.status,
+			field: trace.fieldKey,
+			confidence: trace.confidence.toFixed(2),
+			adapter: trace.adapterId,
+			selected: trace.selectedValuePreview || 'n/a',
+			applied: trace.appliedValuePreview || 'n/a',
+			retry: `${trace.retryAttemptsUsed}/${trace.retryMaxAttempts} ${trace.retryStrategy}`
+		}))
+
+		console.groupCollapsed(`FormFilla debug: ${channel} (${traces.length} traces)`)
+		console.table(summaryRows)
+		console.log('FormFilla field traces', traces)
+		console.groupEnd()
 	}
 
 	private async fillForm(form: HTMLFormElement): Promise<FillResult[]> {
