@@ -139,6 +139,31 @@ const ARIA_SPINBUTTON_ADAPTER: AdapterDefinition = {
 	eventStrategy: ['focus', 'input', 'change', 'blur']
 }
 
+const REACT_SELECT_ADAPTER: AdapterDefinition = {
+	id: 'react-select.combobox',
+	eventStrategy: ['focus', 'input', 'change', 'blur']
+}
+
+const HEADLESS_UI_LISTBOX_ADAPTER: AdapterDefinition = {
+	id: 'headlessui.listbox',
+	eventStrategy: ['focus', 'change', 'blur']
+}
+
+const MUI_AUTOCOMPLETE_ADAPTER: AdapterDefinition = {
+	id: 'mui.autocomplete',
+	eventStrategy: ['focus', 'input', 'change', 'blur']
+}
+
+const MASKED_INPUT_ADAPTER: AdapterDefinition = {
+	id: 'masked.input',
+	eventStrategy: ['focus', 'input', 'change', 'blur']
+}
+
+const SHADOW_NATIVE_ADAPTER: AdapterDefinition = {
+	id: 'shadow.native',
+	eventStrategy: ['focus', 'input', 'change', 'blur']
+}
+
 export class InteractionManager {
 	private userPreferences: ExtensionSettings
 	private activeButtons = new Map<HTMLElement, HTMLElement>()
@@ -446,7 +471,7 @@ export class InteractionManager {
 	}
 
 	private async fillEntireForm(profileData: ProfileData): Promise<void> {
-		const forms = document.querySelectorAll('form')
+		const forms = this.fieldDetector.collectFormSnapshots(document).map(snapshot => snapshot.form)
 
 		for (const form of forms) {
 			await this.fillFormWithProfile(form, profileData)
@@ -649,10 +674,12 @@ export class InteractionManager {
 			)
 		}
 
+		const settledValue = executionResult.appliedValue ?? refreshedFill.instruction.normalizedValue
 		const persisted = this.verifyFilledValue(
 			refreshedFill.candidate.element,
 			refreshedFill.candidate.controlKind,
-			refreshedFill.instruction.normalizedValue
+			settledValue,
+			refreshedFill.instruction.adapterId
 		)
 
 		if (persisted) {
@@ -663,7 +690,7 @@ export class InteractionManager {
 				{
 				...executionResult,
 				candidateId: refreshedFill.instruction.candidateId,
-				appliedValue: refreshedFill.instruction.normalizedValue,
+				appliedValue: settledValue,
 				message: observedMutation
 					? 'Filled successfully after a dynamic re-render'
 					: executionResult.message
@@ -753,9 +780,8 @@ export class InteractionManager {
 			plannedFill.candidate.controlKind,
 			plannedFill.candidate.attributes.name || '',
 			plannedFill.candidate.attributes.id || plannedFill.candidate.element.id || '',
-			plannedFill.candidate.labelText || '',
 			plannedFill.candidate.autocomplete || '',
-			plannedFill.candidate.placeholder || ''
+			plannedFill.candidate.role || ''
 		]
 
 		return identityParts
@@ -897,7 +923,7 @@ export class InteractionManager {
 			}
 		}
 
-		const adapter = this.getAdapter(candidate.controlKind)
+		const adapter = this.getAdapter(candidate.element, candidate.controlKind)
 		if (!adapter) {
 			return {
 				candidate,
@@ -1110,7 +1136,7 @@ export class InteractionManager {
 		if (!this.isFormField(element)) return null
 
 		const controlKind = this.getControlKind(element)
-		const adapter = this.getAdapter(controlKind)
+		const adapter = this.getAdapter(element, controlKind)
 		if (!adapter) {
 			return this.createBlockedFillResult(
 				`direct:${Date.now()}`,
@@ -1177,7 +1203,7 @@ export class InteractionManager {
 			}
 
 			const appliedValue = execution.appliedValue ?? instruction.normalizedValue
-			const verified = this.verifyFilledValue(element, controlKind, appliedValue)
+			const verified = this.verifyFilledValue(element, controlKind, appliedValue, instruction.adapterId)
 
 			return {
 				candidateId: instruction.candidateId,
@@ -1202,6 +1228,34 @@ export class InteractionManager {
 	}
 
 	private async applyAdapter(
+		element: FormControlElement,
+		controlKind: FieldControlKind,
+		instruction: FillInstruction
+	): Promise<AdapterExecution> {
+		switch (instruction.adapterId) {
+			case REACT_SELECT_ADAPTER.id:
+				return this.applyReactSelectAdapter(element, instruction)
+
+			case HEADLESS_UI_LISTBOX_ADAPTER.id:
+				return this.applyHeadlessUIListboxAdapter(element, instruction)
+
+			case MUI_AUTOCOMPLETE_ADAPTER.id:
+				return this.applyMaterialAutocompleteAdapter(element, instruction)
+
+			case MASKED_INPUT_ADAPTER.id:
+				return this.applyMaskedInputAdapter(element, instruction)
+
+			case SHADOW_NATIVE_ADAPTER.id:
+				return this.applyShadowNativeAdapter(element, controlKind, instruction)
+
+			default:
+				break
+		}
+
+		return this.applyBaseAdapter(element, controlKind, instruction)
+	}
+
+	private async applyBaseAdapter(
 		element: FormControlElement,
 		controlKind: FieldControlKind,
 		instruction: FillInstruction
@@ -1346,7 +1400,17 @@ export class InteractionManager {
 	}
 
 	private applyComboboxAdapter(element: FormControlElement, instruction: FillInstruction): AdapterExecution {
+		this.focusIfPlanned(element, instruction)
+		this.openRolePopupIfNeeded(element)
+
 		const popup = this.resolveControlledPopup(element)
+		if (!popup && element.getAttribute('aria-controls')) {
+			return {
+				applied: false,
+				message: 'Combobox popup could not be resolved from aria-controls or aria-owns'
+			}
+		}
+
 		const options = this.getRoleOptions(element, popup, ['option'])
 		const matchingOption = this.findMatchingRoleOption(options, instruction.normalizedValue)
 		if (!matchingOption) {
@@ -1356,8 +1420,6 @@ export class InteractionManager {
 			}
 		}
 
-		this.focusIfPlanned(element, instruction)
-		this.openRolePopupIfNeeded(element)
 		matchingOption.click()
 		this.dispatchIfPlanned(element, instruction, 'input')
 		this.dispatchIfPlanned(element, instruction, 'change')
@@ -1370,6 +1432,9 @@ export class InteractionManager {
 	}
 
 	private applyListboxAdapter(element: FormControlElement, instruction: FillInstruction): AdapterExecution {
+		this.focusIfPlanned(element, instruction)
+		this.openRolePopupIfNeeded(element)
+
 		const options = this.getRoleOptions(element, this.resolveControlledPopup(element), ['option'])
 		const matchingOption = this.findMatchingRoleOption(options, instruction.normalizedValue)
 		if (!matchingOption) {
@@ -1379,7 +1444,6 @@ export class InteractionManager {
 			}
 		}
 
-		this.focusIfPlanned(element, instruction)
 		matchingOption.click()
 		this.dispatchIfPlanned(element, instruction, 'change')
 		this.blurIfPlanned(element, instruction)
@@ -1484,6 +1548,77 @@ export class InteractionManager {
 		}
 	}
 
+	private applyReactSelectAdapter(element: FormControlElement, instruction: FillInstruction): AdapterExecution {
+		const execution = this.applyComboboxAdapter(element, instruction)
+		if (!execution.applied) {
+			return execution
+		}
+
+		const hiddenInput = this.getAssociatedHiddenInput(element)
+		return {
+			applied: true,
+			appliedValue: hiddenInput?.value.trim() || execution.appliedValue || instruction.normalizedValue
+		}
+	}
+
+	private applyHeadlessUIListboxAdapter(element: FormControlElement, instruction: FillInstruction): AdapterExecution {
+		return this.applyListboxAdapter(element, instruction)
+	}
+
+	private applyMaterialAutocompleteAdapter(element: FormControlElement, instruction: FillInstruction): AdapterExecution {
+		if (element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement) {
+			this.focusIfPlanned(element, instruction)
+			element.value = instruction.normalizedValue
+			this.dispatchIfPlanned(element, instruction, 'input')
+		}
+
+		return this.applyComboboxAdapter(element, instruction)
+	}
+
+	private async applyMaskedInputAdapter(element: FormControlElement, instruction: FillInstruction): Promise<AdapterExecution> {
+		if (!(element instanceof HTMLInputElement)) {
+			return this.applyBaseAdapter(element, this.getControlKind(element), instruction)
+		}
+
+		const maskPattern = this.getMaskPattern(element)
+		const sourceValue = this.getMaskSourceCharacters(instruction.normalizedValue)
+		if (!maskPattern || !sourceValue) {
+			return this.applyTextualAdapter(element, instruction)
+		}
+
+		this.focusIfPlanned(element, instruction)
+		element.value = ''
+
+		for (const character of sourceValue) {
+			element.value += character
+			this.dispatchIfPlanned(element, instruction, 'input')
+			if (this.userPreferences.fillDelay > 0) {
+				await this.delay(this.userPreferences.fillDelay)
+			}
+		}
+
+		if (!element.value || element.value === sourceValue) {
+			element.value = this.applyMaskPattern(maskPattern, sourceValue)
+			this.dispatchIfPlanned(element, instruction, 'input')
+		}
+
+		this.dispatchIfPlanned(element, instruction, 'change')
+		this.blurIfPlanned(element, instruction)
+
+		return {
+			applied: true,
+			appliedValue: element.value || this.applyMaskPattern(maskPattern, sourceValue)
+		}
+	}
+
+	private applyShadowNativeAdapter(
+		element: FormControlElement,
+		controlKind: FieldControlKind,
+		instruction: FillInstruction
+	): Promise<AdapterExecution> {
+		return this.applyBaseAdapter(element, controlKind, instruction)
+	}
+
 	private resolveControlledPopup(element: FormControlElement): HTMLElement | null {
 		const popupIds = [element.getAttribute('aria-controls'), element.getAttribute('aria-owns')]
 			.filter((value): value is string => Boolean(value))
@@ -1500,7 +1635,10 @@ export class InteractionManager {
 	}
 
 	private openRolePopupIfNeeded(element: FormControlElement): void {
-		if (element.getAttribute('aria-expanded') === 'false') {
+		if (
+			element.getAttribute('aria-expanded') === 'false' ||
+			(element.getAttribute('aria-haspopup') === 'listbox' && element.getAttribute('aria-expanded') !== 'true')
+		) {
 			element.click()
 		}
 	}
@@ -1569,7 +1707,29 @@ export class InteractionManager {
 		}
 	}
 
-	private verifyFilledValue(element: FormControlElement, controlKind: FieldControlKind, expectedValue: string): boolean {
+	private verifyFilledValue(
+		element: FormControlElement,
+		controlKind: FieldControlKind,
+		expectedValue: string,
+		adapterId?: string
+	): boolean {
+		switch (adapterId) {
+			case REACT_SELECT_ADAPTER.id:
+				return this.verifyReactSelectValue(element, expectedValue)
+
+			case HEADLESS_UI_LISTBOX_ADAPTER.id:
+				return this.verifyPopupTriggerValue(element, expectedValue)
+
+			case MUI_AUTOCOMPLETE_ADAPTER.id:
+				return this.verifyMaterialAutocompleteValue(element, expectedValue)
+
+			case MASKED_INPUT_ADAPTER.id:
+				return this.getElementValue(element) === expectedValue
+
+			default:
+				break
+		}
+
 		switch (controlKind) {
 			case 'checkbox':
 				return (element as HTMLInputElement).checked === this.resolveCheckboxState(expectedValue, element as HTMLInputElement)
@@ -1600,6 +1760,64 @@ export class InteractionManager {
 			default:
 				return this.getElementValue(element) === expectedValue
 		}
+	}
+
+	private verifyReactSelectValue(element: FormControlElement, expectedValue: string): boolean {
+		const hiddenInput = this.getAssociatedHiddenInput(element)
+		const comboboxMatches = this.verifyComboboxValue(element, expectedValue)
+		if (!hiddenInput) {
+			return comboboxMatches
+		}
+
+		const hiddenMatches = this.normalizeForMatch(hiddenInput.value) === this.normalizeForMatch(expectedValue)
+		return comboboxMatches && hiddenMatches
+	}
+
+	private verifyPopupTriggerValue(element: FormControlElement, expectedValue: string): boolean {
+		const normalizedExpectedValue = this.normalizeForMatch(expectedValue)
+
+		if (this.verifyListboxValue(element, expectedValue)) {
+			return true
+		}
+
+		const hiddenInput = this.getAssociatedHiddenInput(element)
+		if (hiddenInput && this.normalizeForMatch(hiddenInput.value) === normalizedExpectedValue) {
+			return true
+		}
+
+		return this.normalizeForMatch(this.getElementValue(element)).includes(normalizedExpectedValue)
+	}
+
+	private verifyMaterialAutocompleteValue(element: FormControlElement, expectedValue: string): boolean {
+		return this.verifyComboboxValue(element, expectedValue)
+	}
+
+	private isReactSelectControl(element: FormControlElement, controlKind: FieldControlKind): boolean {
+		if (controlKind !== 'combobox') {
+			return false
+		}
+
+		return Boolean(this.resolveControlledPopup(element) && this.getAssociatedHiddenInput(element))
+	}
+
+	private isHeadlessUIListboxTrigger(element: FormControlElement, controlKind: FieldControlKind): boolean {
+		return controlKind === 'listbox' &&
+			element instanceof HTMLButtonElement &&
+			element.getAttribute('aria-haspopup') === 'listbox'
+	}
+
+	private isMaterialAutocompleteControl(element: FormControlElement, controlKind: FieldControlKind): boolean {
+		return controlKind === 'combobox' && element.getAttribute('aria-autocomplete') === 'list'
+	}
+
+	private isMaskedInputElement(element: FormControlElement, controlKind: FieldControlKind): boolean {
+		return (controlKind === 'text' || controlKind === 'tel') &&
+			element instanceof HTMLInputElement &&
+			Boolean(this.getMaskPattern(element))
+	}
+
+	private isShadowWrappedControl(element: FormControlElement, controlKind: FieldControlKind): boolean {
+		return element.getRootNode() instanceof ShadowRoot && controlKind !== 'unknown'
 	}
 
 	private verifyComboboxValue(element: FormControlElement, expectedValue: string): boolean {
@@ -1644,7 +1862,27 @@ export class InteractionManager {
 		return this.normalizeForMatch(element.getAttribute('aria-valuenow') || '') === this.normalizeForMatch(expectedValue)
 	}
 
-	private getAdapter(controlKind: FieldControlKind): AdapterDefinition | null {
+	private getAdapter(element: FormControlElement, controlKind: FieldControlKind): AdapterDefinition | null {
+		if (this.isReactSelectControl(element, controlKind)) {
+			return REACT_SELECT_ADAPTER
+		}
+
+		if (this.isHeadlessUIListboxTrigger(element, controlKind)) {
+			return HEADLESS_UI_LISTBOX_ADAPTER
+		}
+
+		if (this.isMaterialAutocompleteControl(element, controlKind)) {
+			return MUI_AUTOCOMPLETE_ADAPTER
+		}
+
+		if (this.isMaskedInputElement(element, controlKind)) {
+			return MASKED_INPUT_ADAPTER
+		}
+
+		if (this.isShadowWrappedControl(element, controlKind)) {
+			return SHADOW_NATIVE_ADAPTER
+		}
+
 		switch (controlKind) {
 			case 'text':
 			case 'date':
@@ -1812,6 +2050,92 @@ export class InteractionManager {
 		return ['false', '0', 'no', 'off', 'unchecked', 'true', '1', 'yes', 'on', 'checked'].includes(normalizedValue)
 	}
 
+	private getAssociatedHiddenInput(element: FormControlElement): HTMLInputElement | null {
+		const directId = element.getAttribute('data-hidden-input-id')
+		if (directId) {
+			const directMatch = document.getElementById(directId)
+			if (directMatch instanceof HTMLInputElement && directMatch.type === 'hidden') {
+				return directMatch
+			}
+		}
+
+		const containers = [
+			this.getAssociatedForm(element),
+			element.closest('section, fieldset, article, div')
+		].filter((value): value is Element => value instanceof Element)
+
+		const name = element.getAttribute('name')
+		for (const container of containers) {
+			const match = Array.from(container.querySelectorAll<HTMLInputElement>('input[type="hidden"]')).find(candidate => {
+				if (candidate.getAttribute('data-hidden-input-for') === element.id) {
+					return true
+				}
+
+				return Boolean(name && candidate.name === name)
+			})
+
+			if (match) {
+				return match
+			}
+		}
+
+		return null
+	}
+
+	private getAssociatedForm(element: FormControlElement): HTMLFormElement | null {
+		if (element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement || element instanceof HTMLSelectElement) {
+			return element.form || element.closest('form')
+		}
+
+		return element.closest('form')
+	}
+
+	private getMaskPattern(element: HTMLInputElement): string | null {
+		return element.getAttribute('data-mask') || element.getAttribute('data-input-mask') || null
+	}
+
+	private getMaskSourceCharacters(value: string): string {
+		return value.replace(/[^a-zA-Z0-9]/g, '')
+	}
+
+	private applyMaskPattern(maskPattern: string, value: string): string {
+		let valueIndex = 0
+		let maskedValue = ''
+
+		for (const token of maskPattern) {
+			const nextValue = value[valueIndex]
+			if (!nextValue) {
+				break
+			}
+
+			if (token === '9') {
+				if (/\d/.test(nextValue)) {
+					maskedValue += nextValue
+					valueIndex += 1
+				}
+				continue
+			}
+
+			if (token === 'a') {
+				if (/[a-z]/i.test(nextValue)) {
+					maskedValue += nextValue
+					valueIndex += 1
+				}
+				continue
+			}
+
+			if (token === '*') {
+				maskedValue += nextValue
+				valueIndex += 1
+				continue
+			}
+
+			maskedValue += token
+		}
+
+		return maskedValue
+	}
+
 	private matchesRadioValue(element: HTMLInputElement, desiredValue: string): boolean {
 		const normalizedDesiredValue = this.normalizeForMatch(desiredValue)
 		const candidateValues = new Set<string>()
@@ -1849,6 +2173,10 @@ export class InteractionManager {
 			return role as FieldControlKind
 		}
 
+		if (element.getAttribute('aria-haspopup') === 'listbox' && element.getAttribute('aria-controls')) {
+			return 'listbox'
+		}
+
 		if (element instanceof HTMLTextAreaElement) return 'textarea'
 		if (element instanceof HTMLSelectElement) return 'select'
 		if (!(element instanceof HTMLInputElement)) return 'unknown'
@@ -1881,7 +2209,8 @@ export class InteractionManager {
 		return element instanceof HTMLInputElement ||
 			element instanceof HTMLTextAreaElement ||
 			element instanceof HTMLSelectElement ||
-			Boolean(element.getAttribute('role') && ARIA_WIDGET_ROLES.has(element.getAttribute('role') || ''))
+			Boolean(element.getAttribute('role') && ARIA_WIDGET_ROLES.has(element.getAttribute('role') || '')) ||
+			Boolean(element.getAttribute('aria-haspopup') === 'listbox' && element.getAttribute('aria-controls'))
 	}
 
 	private delay(ms: number): Promise<void> {

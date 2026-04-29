@@ -22,7 +22,8 @@ const ARIA_CONTROL_SELECTOR = [
 	'[role="radiogroup"]',
 	'[role="spinbutton"]'
 ].join(', ')
-const CONTROL_SELECTOR = `input, select, textarea, ${ARIA_CONTROL_SELECTOR}`
+const POPUP_TRIGGER_SELECTOR = 'button[aria-haspopup="listbox"][aria-controls], [role="button"][aria-haspopup="listbox"][aria-controls]'
+const CONTROL_SELECTOR = `input, select, textarea, ${ARIA_CONTROL_SELECTOR}, ${POPUP_TRIGGER_SELECTOR}`
 const SECTION_SELECTOR = 'fieldset, section, article, [role="group"], [data-form-section]'
 const FIELD_INFERENCE_LIMITS = {
 	highConfidence: 0.72,
@@ -954,11 +955,16 @@ export class FieldDetector {
 			return false
 		}
 
+		if (node instanceof HTMLInputElement && this.isLibraryHiddenProxy(node)) {
+			return false
+		}
+
 		if (node instanceof HTMLInputElement || node instanceof HTMLTextAreaElement || node instanceof HTMLSelectElement) {
 			return true
 		}
 
-		return node instanceof HTMLElement && this.getAriaControlKind(node) !== null
+		return node instanceof HTMLElement &&
+			(this.getAriaControlKind(node) !== null || this.getPopupTriggerControlKind(node) !== null)
 	}
 
 	private isOwnedPopupControl(node: HTMLElement): boolean {
@@ -966,12 +972,40 @@ export class FieldDetector {
 			return false
 		}
 
-		return Array.from(node.ownerDocument.querySelectorAll<HTMLElement>('[role="combobox"]')).some(control => {
+		return Array.from(node.ownerDocument.querySelectorAll<HTMLElement>('[aria-controls], [aria-owns]')).some(control => {
+			if (this.getAriaControlKind(control) === null && this.getPopupTriggerControlKind(control) === null) {
+				return false
+			}
+
 			const controlledIds = [control.getAttribute('aria-controls'), control.getAttribute('aria-owns')]
 				.filter((value): value is string => Boolean(value))
 				.flatMap(value => value.split(/\s+/).filter(Boolean))
 
 			return controlledIds.includes(node.id)
+		})
+	}
+
+	private isLibraryHiddenProxy(node: HTMLInputElement): boolean {
+		if (node.type !== 'hidden') {
+			return false
+		}
+
+		if (node.hasAttribute('data-hidden-input-for')) {
+			return true
+		}
+
+		const name = node.name.trim()
+		if (!name) {
+			return false
+		}
+
+		const container = node.closest('section, fieldset, article, div, form')
+		if (!container) {
+			return false
+		}
+
+		return Array.from(container.querySelectorAll<HTMLElement>(`${ARIA_CONTROL_SELECTOR}, ${POPUP_TRIGGER_SELECTOR}`)).some(control => {
+			return control !== node && control.getAttribute('name')?.trim() === name
 		})
 	}
 
@@ -1093,6 +1127,9 @@ export class FieldDetector {
 		const ariaControlKind = this.getAriaControlKind(element)
 		if (ariaControlKind) return ariaControlKind
 
+		const popupTriggerControlKind = this.getPopupTriggerControlKind(element)
+		if (popupTriggerControlKind) return popupTriggerControlKind
+
 		if (element instanceof HTMLTextAreaElement) return 'textarea'
 		if (element instanceof HTMLSelectElement) return 'select'
 		if (!(element instanceof HTMLInputElement)) return 'unknown'
@@ -1143,6 +1180,14 @@ export class FieldDetector {
 			default:
 				return null
 		}
+	}
+
+	private getPopupTriggerControlKind(element: Element): FieldControlKind | null {
+		if (element.getAttribute('aria-haspopup') === 'listbox' && element.getAttribute('aria-controls')) {
+			return 'listbox'
+		}
+
+		return null
 	}
 
 	private collectAttributes(element: FormControlElement): Record<string, string> {

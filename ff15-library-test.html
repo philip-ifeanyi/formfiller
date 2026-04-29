@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>FormFilla FF-15 Fixture</title>
+	<style>
+		body {
+			margin: 0;
+			padding: 24px;
+			font-family: 'Segoe UI', sans-serif;
+			background: #f3f6f2;
+			color: #1d2d24;
+		}
+
+		main {
+			max-width: 960px;
+			margin: 0 auto;
+			background: #fff;
+			border-radius: 18px;
+			padding: 28px;
+			box-shadow: 0 20px 40px rgba(24, 46, 35, 0.08);
+		}
+
+		.grid {
+			display: grid;
+			grid-template-columns: repeat(2, minmax(0, 1fr));
+			gap: 18px;
+		}
+
+		.card {
+			padding: 18px;
+			border: 1px solid #d6e1d8;
+			border-radius: 14px;
+			background: #fafcf9;
+		}
+
+		label,
+		.legend {
+			display: block;
+			font-weight: 600;
+			margin-bottom: 10px;
+		}
+
+		[role="combobox"],
+		button[aria-haspopup="listbox"],
+		input[type="text"],
+		input[type="email"] {
+			width: 100%;
+			padding: 10px 12px;
+			border: 1px solid #c6d1c8;
+			border-radius: 10px;
+			background: #fff;
+			font: inherit;
+			box-sizing: border-box;
+		}
+
+		[role="combobox"],
+		button[aria-haspopup="listbox"] {
+			cursor: pointer;
+			text-align: left;
+		}
+
+		.popup {
+			margin-top: 10px;
+			padding: 8px;
+			border: 1px solid #d6e1d8;
+			border-radius: 10px;
+			display: grid;
+			gap: 6px;
+			background: #fff;
+		}
+
+		.portal-root {
+			margin-top: 20px;
+			padding: 16px;
+			border-radius: 14px;
+			background: #f4f8f4;
+		}
+
+		[role="option"] {
+			padding: 8px 10px;
+			border-radius: 8px;
+			cursor: pointer;
+		}
+
+		[role="option"][aria-selected="true"] {
+			background: #ddefdf;
+			color: #1d5c3f;
+		}
+
+		.help {
+			margin: 8px 0 0;
+			font-size: 13px;
+			color: #55695d;
+		}
+
+		.hidden {
+			display: none;
+		}
+
+		pre {
+			margin: 20px 0 0;
+			padding: 14px;
+			border-radius: 12px;
+			background: #f3f7f4;
+			overflow-x: auto;
+		}
+
+		shadow-email-field {
+			display: block;
+			margin-top: 18px;
+		}
+
+		@media (max-width: 760px) {
+			.grid {
+				grid-template-columns: 1fr;
+			}
+		}
+	</style>
+</head>
+
+<body>
+	<main>
+		<h1>FF-15 Library Adapter Fixture</h1>
+		<p>React Select-like, Headless UI-like, Material UI-like, masked input, and shadow-root wrapped fields.</p>
+
+		<form id="library-widget-form">
+			<div class="grid">
+				<section class="card">
+					<label id="react-country-label" for="react-country-control">Country</label>
+					<div id="react-country-control" role="combobox" name="country" data-field="country"
+						aria-labelledby="react-country-label" aria-controls="react-country-menu" aria-expanded="false" tabindex="0">
+						United States</div>
+					<input type="hidden" id="react-country-hidden" name="country" value="United States"
+						data-hidden-input-for="react-country-control">
+					<p class="help">Portaled listbox plus hidden input.</p>
+				</section>
+
+				<section class="card">
+					<label id="headless-department-label">Department</label>
+					<button type="button" id="headless-department-trigger" name="department" data-field="department"
+						aria-haspopup="listbox" aria-controls="headless-department-menu" aria-expanded="false"
+						aria-labelledby="headless-department-label headless-department-value">
+						<span id="headless-department-value">Engineering</span>
+					</button>
+					<input type="hidden" id="headless-department-hidden" name="department" value="Engineering"
+						data-hidden-input-for="headless-department-trigger">
+					<p class="help">Button trigger with an external listbox.</p>
+				</section>
+
+				<section class="card">
+					<label for="mui-title-input">Job Title</label>
+					<input id="mui-title-input" type="text" role="combobox" name="jobTitle" data-field="job-title"
+						aria-autocomplete="list" aria-controls="mui-title-listbox" aria-expanded="false" value="Designer">
+					<p class="help">Autocomplete input with portaled options.</p>
+				</section>
+
+				<section class="card">
+					<label for="masked-phone-input">Phone</label>
+					<input id="masked-phone-input" type="text" name="phone" data-mask="(999) 999-9999"
+						placeholder="(999) 999-9999" value="">
+					<p class="help">Formats digits on each input event.</p>
+				</section>
+			</div>
+		</form>
+
+		<shadow-email-field></shadow-email-field>
+
+		<div class="portal-root">
+			<strong>Portaled Menus</strong>
+			<div id="react-country-menu" class="popup hidden" role="listbox" aria-label="Country options">
+				<div role="option" aria-selected="false" data-value="United States">United States</div>
+				<div role="option" aria-selected="false" data-value="Canada">Canada</div>
+				<div role="option" aria-selected="false" data-value="Japan">Japan</div>
+			</div>
+
+			<div id="headless-department-menu" class="popup hidden" role="listbox" aria-label="Department options">
+				<div role="option" aria-selected="false" data-value="Engineering">Engineering</div>
+				<div role="option" aria-selected="false" data-value="Design">Design</div>
+				<div role="option" aria-selected="false" data-value="QA">QA</div>
+			</div>
+
+			<div id="mui-title-listbox" class="popup hidden" role="listbox" aria-label="Job title options">
+				<div role="option" aria-selected="false" data-value="Designer">Designer</div>
+				<div role="option" aria-selected="false" data-value="Engineer">Engineer</div>
+				<div role="option" aria-selected="false" data-value="Manager">Manager</div>
+			</div>
+		</div>
+
+		<pre id="fixture-state"></pre>
+	</main>
+
+	<script>
+		class ShadowEmailField extends HTMLElement {
+			constructor() {
+				super();
+				const root = this.attachShadow({ mode: 'open' });
+				root.innerHTML = `
+					<style>
+						.card { padding: 18px; border: 1px solid #d6e1d8; border-radius: 14px; background: #fafcf9; }
+						label { display: block; font-weight: 600; margin-bottom: 10px; }
+						input { width: 100%; padding: 10px 12px; border: 1px solid #c6d1c8; border-radius: 10px; font: inherit; box-sizing: border-box; }
+						p { margin: 8px 0 0; font-size: 13px; color: #55695d; }
+					</style>
+					<form id="shadow-email-form" class="card">
+						<label for="shadow-email-input">Email</label>
+						<input id="shadow-email-input" type="email" name="email" value="">
+						<p>Open shadow-root wrapped input.</p>
+					</form>
+				`;
+			}
+		}
+
+		customElements.define('shadow-email-field', ShadowEmailField);
+
+		const stateEl = document.getElementById('fixture-state');
+
+		function updateState() {
+			const shadowEmail = document.querySelector('shadow-email-field')?.shadowRoot?.getElementById('shadow-email-input')?.value || '';
+			stateEl.textContent = JSON.stringify({
+				reactSelectCountry: document.getElementById('react-country-control').textContent.trim(),
+				headlessDepartment: document.getElementById('headless-department-value').textContent.trim(),
+				muiTitle: document.getElementById('mui-title-input').value,
+				maskedPhone: document.getElementById('masked-phone-input').value,
+				shadowEmail
+			}, null, 2);
+		}
+
+		function setSelectedOption(container, value) {
+			container.querySelectorAll('[role="option"]').forEach(option => {
+				option.setAttribute('aria-selected', option.getAttribute('data-value') === value ? 'true' : 'false');
+			});
+		}
+
+		function wireCombobox(controlId, popupId, hiddenInputId) {
+			const control = document.getElementById(controlId);
+			const popup = document.getElementById(popupId);
+			const hiddenInput = hiddenInputId ? document.getElementById(hiddenInputId) : null;
+
+			control.addEventListener('click', () => {
+				const expanded = control.getAttribute('aria-expanded') === 'true';
+				control.setAttribute('aria-expanded', expanded ? 'false' : 'true');
+				popup.classList.toggle('hidden', expanded);
+			});
+
+			popup.querySelectorAll('[role="option"]').forEach(option => {
+				option.addEventListener('click', () => {
+					const nextValue = option.getAttribute('data-value');
+					setSelectedOption(popup, nextValue);
+					if (control.tagName === 'INPUT') {
+						control.value = nextValue;
+					} else {
+						control.textContent = nextValue;
+					}
+					control.setAttribute('aria-expanded', 'false');
+					popup.classList.add('hidden');
+					if (hiddenInput) {
+						hiddenInput.value = nextValue;
+					}
+					updateState();
+				});
+			});
+		}
+
+		wireCombobox('react-country-control', 'react-country-menu', 'react-country-hidden');
+		wireCombobox('mui-title-input', 'mui-title-listbox');
+
+		const headlessTrigger = document.getElementById('headless-department-trigger');
+		const headlessValue = document.getElementById('headless-department-value');
+		const headlessHidden = document.getElementById('headless-department-hidden');
+		const headlessMenu = document.getElementById('headless-department-menu');
+
+		headlessTrigger.addEventListener('click', () => {
+			const expanded = headlessTrigger.getAttribute('aria-expanded') === 'true';
+			headlessTrigger.setAttribute('aria-expanded', expanded ? 'false' : 'true');
+			headlessMenu.classList.toggle('hidden', expanded);
+		});
+
+		headlessMenu.querySelectorAll('[role="option"]').forEach(option => {
+			option.addEventListener('click', () => {
+				const nextValue = option.getAttribute('data-value');
+				setSelectedOption(headlessMenu, nextValue);
+				headlessValue.textContent = nextValue;
+				headlessHidden.value = nextValue;
+				headlessTrigger.setAttribute('aria-expanded', 'false');
+				headlessMenu.classList.add('hidden');
+				updateState();
+			});
+		});
+
+		const maskedPhoneInput = document.getElementById('masked-phone-input');
+		maskedPhoneInput.addEventListener('input', () => {
+			const digits = maskedPhoneInput.value.replace(/\D/g, '').slice(0, 10);
+			let formatted = '';
+			if (digits.length > 0) formatted += '(' + digits.slice(0, 3);
+			if (digits.length >= 4) formatted += ') ' + digits.slice(3, 6);
+			if (digits.length >= 7) formatted += '-' + digits.slice(6, 10);
+			maskedPhoneInput.value = formatted || digits;
+			updateState();
+		});
+
+		updateState();
+	</script>
+</body>
+
+</html>

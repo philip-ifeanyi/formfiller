@@ -11,9 +11,22 @@ import {
 	type FieldReviewItem,
 	type FieldInfo,
 	type FillResult,
+	type FormControlElement,
 	type ProfileData
 } from '../types'
 import { validateMessage } from '../lib/security'
+
+const SUPPORTED_FIELD_SELECTOR = [
+	'input',
+	'textarea',
+	'select',
+	'[role="combobox"]',
+	'[role="listbox"]',
+	'[role="switch"]',
+	'[role="radiogroup"]',
+	'[role="spinbutton"]',
+	'button[aria-haspopup="listbox"][aria-controls]'
+].join(', ')
 
 function isProfileDataResponse(response: BackgroundResponseMessage | null): response is { profileData: ProfileData } {
 	return Boolean(response && 'profileData' in response)
@@ -119,11 +132,9 @@ export class FormFillaContent {
 					break
 
 				case 'getFormFields':
-					const forms = document.querySelectorAll('form')
-					const fieldCount = Array.from(forms).reduce((count, form) => {
-						return count + form.querySelectorAll('input, textarea, select').length
-					}, 0)
-					sendResponse({ formCount: forms.length, fieldCount })
+					const snapshots = this.getDetectedFormSnapshots()
+					const fieldCount = snapshots.reduce((count, snapshot) => count + snapshot.candidates.length, 0)
+					sendResponse({ formCount: snapshots.length, fieldCount })
 					break
 
 				case 'highlightField':
@@ -141,8 +152,8 @@ export class FormFillaContent {
 	}
 
 	private async handleFormFillRequest(profileData: ProfileData): Promise<FillResult[]> {
-		const forms = document.querySelectorAll('form')
-		const results = await Promise.all(Array.from(forms).map(form => {
+		const forms = this.getDetectedForms()
+		const results = await Promise.all(forms.map(form => {
 			return this.interactionManager.fillFormWithProfile(form, profileData)
 		}))
 
@@ -171,8 +182,7 @@ export class FormFillaContent {
 	}
 
 	private reviewAllFormsOnPage(profileData: ProfileData): FieldReviewItem[] {
-		const forms = document.querySelectorAll('form')
-		return Array.from(forms).flatMap(form => this.interactionManager.reviewFormWithProfile(form, profileData))
+		return this.getDetectedForms().flatMap(form => this.interactionManager.reviewFormWithProfile(form, profileData))
 	}
 
 	private async loadPageControlSettings(): Promise<void> {
@@ -239,8 +249,9 @@ export class FormFillaContent {
 
 	private isRelevantFormMutation(element: Element): boolean {
 		return element.tagName === 'FORM' ||
-			element.matches('input, textarea, select') ||
-			Boolean(element.querySelector('form, input, textarea, select'))
+			element.matches(SUPPORTED_FIELD_SELECTOR) ||
+			Boolean((element as HTMLElement).shadowRoot) ||
+			Boolean(element.querySelector(`form, ${SUPPORTED_FIELD_SELECTOR}`))
 	}
 
 	private collectAffectedForms(node: Node, affectedForms: Set<HTMLFormElement>): void {
@@ -253,22 +264,13 @@ export class FormFillaContent {
 			affectedForms.add(ownerForm)
 		}
 
-		node.querySelectorAll('form').forEach(form => {
-			if (form instanceof HTMLFormElement) {
-				affectedForms.add(form)
-			}
-		})
+		if (node instanceof HTMLElement) {
+			this.collectFormsFromRoot(node).forEach(form => affectedForms.add(form))
+		}
 
-		node.querySelectorAll('input, textarea, select').forEach(control => {
-			const formOwner =
-				(control instanceof HTMLInputElement || control instanceof HTMLTextAreaElement || control instanceof HTMLSelectElement)
-					? control.form || control.closest('form')
-					: null
-
-			if (formOwner instanceof HTMLFormElement) {
-				affectedForms.add(formOwner)
-			}
-		})
+		if (node instanceof HTMLElement && node.shadowRoot) {
+			this.collectFormsFromRoot(node.shadowRoot).forEach(form => affectedForms.add(form))
+		}
 	}
 
 	private setupEventListeners(): void {
@@ -525,7 +527,7 @@ export class FormFillaContent {
 		const target = event.target as HTMLElement
 
 		if (this.isFormField(target)) {
-			const fieldInfo = this.fieldDetector.detectField(target as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement)
+			const fieldInfo = this.fieldDetector.detectField(target as FormControlElement)
 
 			if (fieldInfo) {
 				this.interactionManager.addButton(target, fieldInfo)
@@ -549,7 +551,7 @@ export class FormFillaContent {
 		const target = event.target as HTMLElement
 
 		if (this.isFormField(target)) {
-			const fieldInfo = this.fieldDetector.detectField(target as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement)
+			const fieldInfo = this.fieldDetector.detectField(target as FormControlElement)
 			this.interactionManager.enhanceContextMenu(target, fieldInfo)
 		}
 	}
@@ -690,6 +692,28 @@ export class FormFillaContent {
 		}
 	}
 
+	private getDetectedFormSnapshots() {
+		return this.fieldDetector.collectFormSnapshots(document)
+	}
+
+	private getDetectedForms(): HTMLFormElement[] {
+		const formsBySignature = new Map<string, HTMLFormElement>()
+		this.getDetectedFormSnapshots().forEach(snapshot => {
+			formsBySignature.set(snapshot.domSignature, snapshot.form)
+		})
+
+		return Array.from(formsBySignature.values())
+	}
+
+	private collectFormsFromRoot(root: HTMLElement | ShadowRoot): HTMLFormElement[] {
+		const formsBySignature = new Map<string, HTMLFormElement>()
+		this.fieldDetector.collectFormSnapshots(root).forEach(snapshot => {
+			formsBySignature.set(snapshot.domSignature, snapshot.form)
+		})
+
+		return Array.from(formsBySignature.values())
+	}
+
 	private showUserMessage(message: string): void {
 		// Create a temporary notification
 		const notification = document.createElement('div')
@@ -718,9 +742,7 @@ export class FormFillaContent {
 	}
 
 	private isFormField(element: HTMLElement): boolean {
-		return element.tagName === 'INPUT' ||
-			element.tagName === 'TEXTAREA' ||
-			element.tagName === 'SELECT'
+		return element.matches(SUPPORTED_FIELD_SELECTOR)
 	}
 
 	// Cleanup method
