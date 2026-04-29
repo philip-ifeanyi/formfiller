@@ -11,37 +11,52 @@
 		}
 
 		body {
-			font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+			font-family: 'Avenir Next', 'Segoe UI', sans-serif;
 			margin: 0;
 			padding: 24px;
-			background: #f8f9fa;
+			background:
+				radial-gradient(circle at top left, rgba(54, 116, 96, 0.1), transparent 28%),
+				linear-gradient(180deg, #f7f4ec 0%, #eef1ea 100%);
 			min-height: 100vh;
+			color: #203229;
+		}
+
+		body.modal-open {
+			overflow: hidden;
 		}
 
 		.container {
-			max-width: 800px;
+			max-width: 1040px;
 			margin: 0 auto;
-			background: white;
-			border-radius: 8px;
-			box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+			background: rgba(255, 255, 255, 0.92);
+			backdrop-filter: blur(10px);
+			border-radius: 20px;
+			box-shadow: 0 28px 60px rgba(24, 51, 42, 0.12);
+			border: 1px solid rgba(32, 50, 41, 0.08);
 			overflow: hidden;
 		}
 
 		.header {
-			background: #4285f4;
+			background: linear-gradient(135deg, #1f5d49 0%, #2f7e65 100%);
 			color: white;
-			padding: 24px;
-			text-align: center;
+			padding: 28px 32px;
 		}
 
 		.header h1 {
 			margin: 0;
-			font-size: 24px;
+			font-size: 28px;
 			font-weight: 600;
 		}
 
+		.header p {
+			margin: 8px 0 0;
+			font-size: 14px;
+			max-width: 560px;
+			color: rgba(255, 255, 255, 0.82);
+		}
+
 		.content {
-			padding: 24px;
+			padding: 28px 32px 32px;
 		}
 
 		.section {
@@ -51,83 +66,140 @@
 		.section h2 {
 			font-size: 18px;
 			font-weight: 600;
-			margin-bottom: 16px;
-			color: #24292e;
-			border-bottom: 1px solid #e1e4e8;
+			margin-bottom: 12px;
+			color: #203229;
+			border-bottom: 1px solid rgba(32, 50, 41, 0.1);
 			padding-bottom: 8px;
+		}
+
+		.section-copy {
+			margin: 0 0 18px;
+			color: #4f665c;
+			font-size: 14px;
+			line-height: 1.5;
+		}
+
+		.section-toolbar {
+			display: flex;
+			justify-content: space-between;
+			align-items: center;
+			gap: 16px;
+			flex-wrap: wrap;
 		}
 
 		.form-group {
 			margin-bottom: 16px;
 		}
 
+		.form-grid {
+			display: grid;
+			grid-template-columns: repeat(2, minmax(0, 1fr));
+			gap: 16px;
+		}
+
+		.form-group.full-width {
+			grid-column: 1 / -1;
+		}
+
 		label {
 			display: block;
 			font-weight: 500;
 			margin-bottom: 8px;
-			color: #24292e;
+			color: #203229;
 		}
 
 		input[type="text"],
 		input[type="email"],
 		input[type="tel"],
+		input[type="date"],
 		input[type="number"],
+		input[type="url"],
+		input[type="password"],
 		select,
 		textarea {
 			width: 100%;
-			padding: 8px 12px;
-			border: 1px solid #d1d5da;
-			border-radius: 4px;
+			padding: 10px 12px;
+			border: 1px solid rgba(32, 50, 41, 0.14);
+			border-radius: 10px;
 			font-size: 14px;
-			transition: border-color 0.2s ease;
+			transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+			background: #fffdf8;
+			color: #203229;
 		}
 
 		input:focus,
 		select:focus,
 		textarea:focus {
 			outline: none;
-			border-color: #4285f4;
-			box-shadow: 0 0 0 2px rgba(66, 133, 244, 0.2);
+			border-color: #2f7e65;
+			box-shadow: 0 0 0 3px rgba(47, 126, 101, 0.16);
+		}
+
+		textarea {
+			min-height: 120px;
+			resize: vertical;
 		}
 
 		.checkbox-group {
 			display: flex;
-			align-items: center;
+			align-items: flex-start;
 			gap: 8px;
+			padding: 12px 14px;
+			border-radius: 12px;
+			background: rgba(244, 247, 242, 0.9);
+			border: 1px solid rgba(32, 50, 41, 0.08);
 		}
 
 		.checkbox-group input[type="checkbox"] {
 			width: auto;
+			margin-top: 3px;
+		}
+
+		.checkbox-copy {
+			margin: 0;
+			font-size: 13px;
+			color: #4f665c;
+		}
+
+		.input-help {
+			margin: 6px 0 0;
+			color: #657a71;
+			font-size: 12px;
+			line-height: 1.4;
 		}
 
 		.btn {
 			padding: 10px 16px;
 			border: none;
-			border-radius: 4px;
+			border-radius: 999px;
 			font-size: 14px;
 			font-weight: 500;
 			cursor: pointer;
 			transition: all 0.2s ease;
 			text-decoration: none;
-			display: inline-block;
+			display: inline-flex;
+			align-items: center;
+			justify-content: center;
+			gap: 8px;
 		}
 
 		.btn-primary {
-			background: #4285f4;
+			background: #2f7e65;
 			color: white;
 		}
 
 		.btn-primary:hover {
-			background: #3367d6;
+			background: #235f4d;
 		}
 
 		.btn-secondary {
-			background: #6c757d;
-			color: white;
+			background: #eef3ee;
+			color: #203229;
+			border: 1px solid rgba(32, 50, 41, 0.12);
 		}
 
 		.btn-secondary:hover {
-			background: #5a6268;
+			background: #dde8df;
 		}
 
 		.btn-danger {
@@ -147,10 +219,19 @@
 		}
 
 		.profile-card {
-			border: 1px solid #d1d5da;
-			border-radius: 6px;
+			border: 1px solid rgba(32, 50, 41, 0.1);
+			border-radius: 16px;
 			padding: 16px;
-			background: #f8f9fa;
+			background: linear-gradient(180deg, rgba(255, 255, 255, 0.95), rgba(247, 250, 246, 0.98));
+			box-shadow: 0 12px 24px rgba(24, 51, 42, 0.06);
+		}
+
+		.profile-card-header {
+			display: flex;
+			justify-content: space-between;
+			align-items: flex-start;
+			gap: 12px;
+			margin-bottom: 16px;
 		}
 
 		.profile-card h3 {
@@ -159,16 +240,76 @@
 			font-weight: 600;
 		}
 
-		.profile-actions {
-			display: flex;
-			gap: 8px;
-			margin-top: 12px;
+		.profile-card-copy {
+			margin: 0;
+			color: #4f665c;
+			font-size: 13px;
 		}
 
-		.form-grid {
+		.profile-badge {
+			display: inline-flex;
+			align-items: center;
+			padding: 4px 10px;
+			border-radius: 999px;
+			background: rgba(47, 126, 101, 0.12);
+			color: #235f4d;
+			font-size: 12px;
+			font-weight: 700;
+		}
+
+		.profile-meta {
 			display: grid;
-			grid-template-columns: 1fr 1fr;
+			grid-template-columns: max-content 1fr;
+			gap: 6px 12px;
+			margin: 0;
+		}
+
+		.profile-meta dt {
+			font-weight: 600;
+			color: #203229;
+		}
+
+		.profile-meta dd {
+			margin: 0;
+			color: #4f665c;
+			word-break: break-word;
+		}
+
+		.profile-actions {
+			display: flex;
+			flex-wrap: wrap;
+			gap: 8px;
+			margin-top: 16px;
+		}
+
+		.btn-sm {
+			padding: 8px 12px;
+			font-size: 13px;
+		}
+
+		.empty-state {
+			padding: 18px;
+			border-radius: 16px;
+			background: rgba(247, 250, 246, 0.92);
+			border: 1px dashed rgba(32, 50, 41, 0.16);
+		}
+
+		.empty-state p {
+			margin: 8px 0 0;
+			color: #4f665c;
+		}
+
+		.settings-grid {
+			display: grid;
+			grid-template-columns: repeat(2, minmax(0, 1fr));
 			gap: 16px;
+		}
+
+		.notification-stack {
+			display: flex;
+			flex-direction: column;
+			gap: 12px;
+			margin-bottom: 20px;
 		}
 
 		@media (max-width: 768px) {
@@ -176,22 +317,30 @@
 				grid-template-columns: 1fr;
 			}
 
+			.settings-grid {
+				grid-template-columns: 1fr;
+			}
+
 			body {
 				padding: 12px;
+			}
+
+			.content {
+				padding: 22px 18px 24px;
 			}
 		}
 
 		.notification {
 			padding: 12px 16px;
-			border-radius: 4px;
-			margin-bottom: 16px;
+			border-radius: 12px;
 			font-weight: 500;
+			box-shadow: 0 10px 24px rgba(24, 51, 42, 0.08);
 		}
 
 		.notification.success {
-			background: #d4edda;
-			color: #155724;
-			border: 1px solid #c3e6cb;
+			background: #dff4e7;
+			color: #1c5b3f;
+			border: 1px solid #c3e8d0;
 		}
 
 		.notification.error {
@@ -203,6 +352,163 @@
 		.hidden {
 			display: none;
 		}
+
+		.modal-backdrop {
+			position: fixed;
+			inset: 0;
+			background: rgba(18, 28, 24, 0.52);
+			backdrop-filter: blur(6px);
+			padding: 32px;
+			z-index: 20;
+			overflow-y: auto;
+		}
+
+		.modal-card {
+			max-width: 980px;
+			margin: 0 auto;
+			background: #fffdf8;
+			border-radius: 20px;
+			box-shadow: 0 32px 60px rgba(18, 28, 24, 0.22);
+			border: 1px solid rgba(32, 50, 41, 0.1);
+			overflow: hidden;
+		}
+
+		.modal-header,
+		.modal-footer {
+			display: flex;
+			justify-content: space-between;
+			align-items: center;
+			gap: 16px;
+			padding: 20px 24px;
+		}
+
+		.modal-header {
+			border-bottom: 1px solid rgba(32, 50, 41, 0.08);
+		}
+
+		.modal-header h2 {
+			margin: 0;
+			font-size: 22px;
+		}
+
+		.modal-header p {
+			margin: 6px 0 0;
+			font-size: 13px;
+			color: #4f665c;
+		}
+
+		.modal-body {
+			padding: 24px;
+			display: flex;
+			flex-direction: column;
+			gap: 20px;
+		}
+
+		.modal-footer {
+			border-top: 1px solid rgba(32, 50, 41, 0.08);
+			background: rgba(247, 250, 246, 0.7);
+		}
+
+		.modal-actions {
+			display: flex;
+			gap: 10px;
+			margin-left: auto;
+		}
+
+		.field-section {
+			padding: 18px;
+			border-radius: 16px;
+			background: rgba(247, 250, 246, 0.92);
+			border: 1px solid rgba(32, 50, 41, 0.08);
+		}
+
+		.field-section h3 {
+			margin: 0 0 6px;
+			font-size: 16px;
+		}
+
+		.field-section p {
+			margin: 0 0 14px;
+			color: #4f665c;
+			font-size: 13px;
+			line-height: 1.5;
+		}
+
+		.custom-fields-list {
+			display: flex;
+			flex-direction: column;
+			gap: 10px;
+		}
+
+		.custom-field-row {
+			display: grid;
+			grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr) auto;
+			gap: 10px;
+		}
+
+		.validation-summary {
+			padding: 14px 16px;
+			border-radius: 14px;
+			background: #fbe7ea;
+			border: 1px solid #efbec8;
+			color: #7b2230;
+		}
+
+		.validation-summary strong {
+			display: block;
+			margin-bottom: 8px;
+		}
+
+		.validation-summary ul {
+			margin: 0;
+			padding-left: 20px;
+		}
+
+		.close-btn {
+			width: 40px;
+			height: 40px;
+			border-radius: 999px;
+			border: 1px solid rgba(32, 50, 41, 0.1);
+			background: #fff;
+			color: #203229;
+			font-size: 18px;
+			cursor: pointer;
+		}
+
+		.close-btn:hover {
+			background: #eef3ee;
+		}
+
+		@media (max-width: 860px) {
+			.modal-backdrop {
+				padding: 18px 12px;
+			}
+
+			.custom-field-row {
+				grid-template-columns: 1fr;
+			}
+
+			.modal-header,
+			.modal-body,
+			.modal-footer {
+				padding-left: 18px;
+				padding-right: 18px;
+			}
+
+			.modal-footer {
+				flex-direction: column;
+				align-items: stretch;
+			}
+
+			.modal-actions {
+				width: 100%;
+				margin-left: 0;
+			}
+
+			.modal-actions .btn {
+				flex: 1;
+			}
+		}
 	</style>
 </head>
 
@@ -210,59 +516,119 @@
 	<div class="container">
 		<div class="header">
 			<h1>FormFilla Settings</h1>
+			<p>Manage structured personas, save safe defaults, and tune developer-only autofill behavior without leaving the
+				extension workflow.</p>
 			<div
-				style="background: rgba(255, 255, 255, 0.1); padding: 8px 16px; margin-top: 16px; border-radius: 4px; font-size: 13px;">
-				⚠️ <strong>Important:</strong> This extension is designed for testing only. Never use real personal or financial
+				style="background: rgba(255, 255, 255, 0.12); padding: 10px 14px; margin-top: 16px; border-radius: 12px; font-size: 13px; line-height: 1.45; max-width: 620px;">
+				<strong>Important:</strong> This extension is designed for testing only. Never use real personal or financial
 				data.
 			</div>
 		</div>
 
 		<div class="content">
-			<div id="notifications"></div>
+			<div class="notification-stack" id="notifications"></div>
 
 			<!-- Profiles Section -->
 			<div class="section">
-				<h2>Profiles</h2>
-				<button class="btn btn-primary" id="add-profile">+ Add New Profile</button>
+				<div class="section-toolbar">
+					<div>
+						<h2>Profiles</h2>
+						<p class="section-copy">Edit canonical groups for personal, address, company, payment, account, and custom
+							values in one structured flow.</p>
+					</div>
+					<button class="btn btn-primary" id="add-profile">Add New Profile</button>
+				</div>
 				<div id="profiles-container"></div>
 			</div>
 
 			<!-- Settings Section -->
 			<div class="section">
 				<h2>Settings</h2>
+				<p class="section-copy">These settings control how FormFilla behaves on the page. Feature flags accept a JSON
+					object whose values are true or false.</p>
 
-				<div class="form-group">
-					<div class="checkbox-group">
-						<input type="checkbox" id="auto-fill-enabled">
-						<label for="auto-fill-enabled">Enable automatic form filling</label>
+				<div class="settings-grid">
+					<div class="form-group">
+						<div class="checkbox-group">
+							<input type="checkbox" id="auto-fill-enabled">
+							<div>
+								<label for="auto-fill-enabled">Enable automatic form filling</label>
+								<p class="checkbox-copy">Turn off all active fill triggers without deleting your saved personas.</p>
+							</div>
+						</div>
 					</div>
-				</div>
 
-				<div class="form-group">
-					<label for="fill-delay">Fill delay (ms)</label>
-					<input type="number" id="fill-delay" min="0" max="1000" step="10">
-				</div>
-
-				<div class="form-group">
-					<div class="checkbox-group">
-						<input type="checkbox" id="show-buttons">
-						<label for="show-buttons">Show fill buttons on form fields</label>
+					<div class="form-group">
+						<label for="fill-delay">Fill delay (ms)</label>
+						<input type="number" id="fill-delay" min="0" max="1000" step="10">
+						<p class="input-help">Increase this if a framework needs more time between simulated input events.</p>
 					</div>
-				</div>
 
-				<div class="form-group">
-					<label for="button-position">Button position</label>
-					<select id="button-position">
-						<option value="inside-right">Inside right</option>
-						<option value="outside-right">Outside right</option>
-						<option value="above">Above field</option>
-					</select>
-				</div>
+					<div class="form-group">
+						<div class="checkbox-group">
+							<input type="checkbox" id="show-buttons">
+							<div>
+								<label for="show-buttons">Show fill buttons on form fields</label>
+								<p class="checkbox-copy">Keeps inline controls and floating actions visible on supported pages.</p>
+							</div>
+						</div>
+					</div>
 
-				<div class="form-group">
-					<div class="checkbox-group">
-						<input type="checkbox" id="context-menu-enabled">
-						<label for="context-menu-enabled">Enable context menu</label>
+					<div class="form-group">
+						<label for="button-position">Button position</label>
+						<select id="button-position">
+							<option value="inside-right">Inside right</option>
+							<option value="outside-right">Outside right</option>
+							<option value="above">Above field</option>
+						</select>
+					</div>
+
+					<div class="form-group">
+						<div class="checkbox-group">
+							<input type="checkbox" id="context-menu-enabled">
+							<div>
+								<label for="context-menu-enabled">Enable context menu</label>
+								<p class="checkbox-copy">Adds right-click actions for filling the current field or the full form.</p>
+							</div>
+						</div>
+					</div>
+
+					<div class="form-group">
+						<div class="checkbox-group">
+							<input type="checkbox" id="auto-hide-buttons">
+							<div>
+								<label for="auto-hide-buttons">Auto-hide inline controls</label>
+								<p class="checkbox-copy">Lets field-level controls fade away when the page is idle.</p>
+							</div>
+						</div>
+					</div>
+
+					<div class="form-group">
+						<label for="button-style">Button style</label>
+						<select id="button-style">
+							<option value="minimal">Minimal</option>
+							<option value="full">Full</option>
+						</select>
+					</div>
+
+					<div class="form-group full-width">
+						<div class="checkbox-group">
+							<input type="checkbox" id="debug-mode">
+							<div>
+								<label for="debug-mode">Debug mode</label>
+								<p class="checkbox-copy">Capture redacted evidence, confidence traces, and adapter diagnostics for popup
+									and page-level review.</p>
+							</div>
+						</div>
+					</div>
+
+					<div class="form-group full-width">
+						<label for="feature-flags">Feature flags JSON</label>
+						<textarea id="feature-flags" spellcheck="false" placeholder="{
+  &quot;experimentalFieldReview&quot;: false
+}"></textarea>
+						<p class="input-help">Use this for boolean-only flags such as `experimentalFieldReview` or `adapterTrace`.
+						</p>
 					</div>
 				</div>
 
@@ -272,6 +638,8 @@
 			<!-- Import/Export Section -->
 			<div class="section">
 				<h2>Import/Export</h2>
+				<p class="section-copy">Export personas to JSON for backup or import them into another developer environment.
+				</p>
 
 				<div class="form-group">
 					<button class="btn btn-secondary" id="export-profiles">Export Profiles</button>
@@ -282,9 +650,144 @@
 		</div>
 	</div>
 
-	<!-- Profile Form Modal (will be shown/hidden dynamically) -->
-	<div id="profile-modal" class="hidden">
-		<!-- Profile editing form will be inserted here -->
+	<div id="profile-modal" class="modal-backdrop hidden" aria-hidden="true">
+		<div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="profile-modal-title">
+			<div class="modal-header">
+				<div>
+					<h2 id="profile-modal-title">Create Profile</h2>
+					<p>Build a reusable persona with grouped canonical values and optional custom field mappings.</p>
+				</div>
+				<button type="button" class="close-btn" id="close-profile-modal" aria-label="Close profile editor">x</button>
+			</div>
+
+			<form id="profile-form">
+				<div class="modal-body">
+					<div id="profile-validation" class="validation-summary hidden"></div>
+
+					<section class="field-section">
+						<h3>Profile identity</h3>
+						<p>Name the persona and optionally promote it to the default after this save.</p>
+						<div class="form-grid">
+							<div class="form-group full-width">
+								<label for="profile-name">Profile name</label>
+								<input type="text" id="profile-name" required placeholder="QA Tester Profile">
+							</div>
+						</div>
+						<div class="checkbox-group">
+							<input type="checkbox" id="profile-make-default">
+							<div>
+								<label for="profile-make-default">Make this the default profile</label>
+								<p class="checkbox-copy" id="profile-default-help">Enable this to make the persona the default after
+									saving.</p>
+							</div>
+						</div>
+					</section>
+
+					<section class="field-section">
+						<h3>Personal</h3>
+						<p>Identity and primary contact values used by most sign-up and checkout forms.</p>
+						<div class="form-grid">
+							<div class="form-group"><label for="profile-personal-first-name">First name</label><input type="text"
+									id="profile-personal-first-name" autocomplete="given-name"></div>
+							<div class="form-group"><label for="profile-personal-last-name">Last name</label><input type="text"
+									id="profile-personal-last-name" autocomplete="family-name"></div>
+							<div class="form-group full-width"><label for="profile-personal-full-name">Full name</label><input
+									type="text" id="profile-personal-full-name" autocomplete="name"></div>
+							<div class="form-group"><label for="profile-personal-email">Email</label><input type="email"
+									id="profile-personal-email" autocomplete="email"></div>
+							<div class="form-group"><label for="profile-personal-phone">Phone</label><input type="tel"
+									id="profile-personal-phone" autocomplete="tel" inputmode="tel"></div>
+							<div class="form-group"><label for="profile-personal-date-of-birth">Date of birth</label><input
+									type="date" id="profile-personal-date-of-birth" autocomplete="bday"></div>
+							<div class="form-group"><label for="profile-personal-age">Age</label><input type="number"
+									id="profile-personal-age" inputmode="numeric"></div>
+							<div class="form-group"><label for="profile-personal-gender">Gender</label><input type="text"
+									id="profile-personal-gender"></div>
+							<div class="form-group full-width"><label for="profile-personal-ssn">SSN</label><input type="text"
+									id="profile-personal-ssn"></div>
+						</div>
+					</section>
+
+					<section class="field-section">
+						<h3>Address</h3>
+						<p>Shipping, billing, and location values for address-heavy workflows.</p>
+						<div class="form-grid">
+							<div class="form-group full-width"><label for="profile-address-street">Street</label><input type="text"
+									id="profile-address-street" autocomplete="address-line1"></div>
+							<div class="form-group full-width"><label for="profile-address-street2">Street line 2</label><input
+									type="text" id="profile-address-street2" autocomplete="address-line2"></div>
+							<div class="form-group"><label for="profile-address-city">City</label><input type="text"
+									id="profile-address-city" autocomplete="address-level2"></div>
+							<div class="form-group"><label for="profile-address-state">State or province</label><input type="text"
+									id="profile-address-state" autocomplete="address-level1"></div>
+							<div class="form-group"><label for="profile-address-zip">Postal code</label><input type="text"
+									id="profile-address-zip" autocomplete="postal-code"></div>
+							<div class="form-group"><label for="profile-address-country">Country</label><input type="text"
+									id="profile-address-country" autocomplete="country-name"></div>
+						</div>
+					</section>
+
+					<section class="field-section">
+						<h3>Company</h3>
+						<p>Employer and organization values for work and B2B forms.</p>
+						<div class="form-grid">
+							<div class="form-group"><label for="profile-company-name">Company name</label><input type="text"
+									id="profile-company-name"></div>
+							<div class="form-group"><label for="profile-company-title">Job title</label><input type="text"
+									id="profile-company-title"></div>
+							<div class="form-group"><label for="profile-company-department">Department</label><input type="text"
+									id="profile-company-department"></div>
+							<div class="form-group full-width"><label for="profile-company-website">Website</label><input type="url"
+									id="profile-company-website"></div>
+						</div>
+					</section>
+
+					<section class="field-section">
+						<h3>Payment</h3>
+						<p>Use test-only values for payment, card, and identity flows.</p>
+						<div class="form-grid">
+							<div class="form-group"><label for="profile-payment-card-number">Card number</label><input type="text"
+									id="profile-payment-card-number" inputmode="numeric"></div>
+							<div class="form-group"><label for="profile-payment-expiry">Expiry</label><input type="text"
+									id="profile-payment-expiry" placeholder="MM/YY"></div>
+							<div class="form-group"><label for="profile-payment-cvv">CVV</label><input type="password"
+									id="profile-payment-cvv" inputmode="numeric"></div>
+							<div class="form-group full-width"><label for="profile-payment-cardholder-name">Cardholder
+									name</label><input type="text" id="profile-payment-cardholder-name"></div>
+						</div>
+					</section>
+
+					<section class="field-section">
+						<h3>Account</h3>
+						<p>Credentials and account-specific values. Keep them synthetic and environment-safe.</p>
+						<div class="form-grid">
+							<div class="form-group"><label for="profile-account-username">Username</label><input type="text"
+									id="profile-account-username" autocomplete="username"></div>
+							<div class="form-group full-width"><label for="profile-account-password">Password</label><input
+									type="password" id="profile-account-password" autocomplete="new-password"></div>
+						</div>
+					</section>
+
+					<section class="field-section">
+						<h3>Custom fields</h3>
+						<p>Add extra schema-backed values for project-specific inputs that do not fit the canonical groups yet.</p>
+						<div class="custom-fields-list" id="custom-fields-container"></div>
+						<div style="margin-top: 12px;">
+							<button type="button" class="btn btn-secondary" id="add-custom-field">Add custom field</button>
+						</div>
+					</section>
+				</div>
+
+				<div class="modal-footer">
+					<p class="input-help">Profile data is validated before save, and sensitive values stay redacted in debug
+						surfaces.</p>
+					<div class="modal-actions">
+						<button type="button" class="btn btn-secondary" id="cancel-profile-form">Cancel</button>
+						<button type="submit" class="btn btn-primary">Save Profile</button>
+					</div>
+				</div>
+			</form>
+		</div>
 	</div>
 
 	<script type="module" src="./index.ts"></script>
