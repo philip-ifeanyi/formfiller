@@ -42,8 +42,8 @@ export interface ExtensionSettings {
 	contextMenuEnabled: boolean
 	autoHideButtons: boolean
 	buttonStyle: 'minimal' | 'full'
-	debugMode?: boolean
-	featureFlags?: Record<string, boolean>
+	debugMode: boolean
+	featureFlags: Record<string, boolean>
 }
 
 export interface StorageData {

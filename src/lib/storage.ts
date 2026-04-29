@@ -9,6 +9,12 @@ import { simpleEncrypt, simpleDecrypt, validateProfileData, generateEncryptionKe
 
 const PROFILE_STORAGE_VERSION_KEY = 'profileStorageVersion'
 
+export const DEFAULT_FEATURE_FLAGS = {
+	showReleaseGateChecks: true,
+	allowDebugTools: true,
+	allowFileFixtures: true
+} as const
+
 type StoredProfileRecord = ProfileDefinition & {
 	data: ProfileData
 }
@@ -22,7 +28,9 @@ const DEFAULT_SETTINGS: StorageData['settings'] = {
 	buttonPosition: 'inside-right',
 	contextMenuEnabled: true,
 	autoHideButtons: true,
-	buttonStyle: 'minimal'
+	buttonStyle: 'minimal',
+	debugMode: false,
+	featureFlags: { ...DEFAULT_FEATURE_FLAGS }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -39,6 +47,10 @@ function readOptionalString(value: unknown): string | undefined {
 
 function readNumber(value: unknown, fallback: number): number {
 	return typeof value === 'number' && Number.isFinite(value) ? value : fallback
+}
+
+function readBoolean(value: unknown, fallback: boolean): boolean {
+	return typeof value === 'boolean' ? value : fallback
 }
 
 function normalizeStringList(value: unknown): string[] | undefined {
@@ -61,6 +73,47 @@ function normalizeStringRecord(value: unknown): Record<string, string> {
 
 		return accumulator
 	}, {})
+}
+
+function normalizeFeatureFlags(value: unknown): Record<string, boolean> {
+	const configuredFlags = isRecord(value)
+		? Object.entries(value).reduce<Record<string, boolean>>((accumulator, [key, entry]) => {
+			if (typeof entry === 'boolean') {
+				accumulator[key] = entry
+			}
+
+			return accumulator
+		}, {})
+		: {}
+
+	return {
+		...DEFAULT_FEATURE_FLAGS,
+		...configuredFlags
+	}
+}
+
+function normalizeSettings(rawSettings: unknown): StorageData['settings'] {
+	const source = isRecord(rawSettings) ? rawSettings : {}
+	const featureFlags = normalizeFeatureFlags(source.featureFlags)
+	const debugMode = featureFlags.allowDebugTools
+		? readBoolean(source.debugMode, DEFAULT_SETTINGS.debugMode)
+		: false
+
+	return {
+		autoFillEnabled: readBoolean(source.autoFillEnabled, DEFAULT_SETTINGS.autoFillEnabled),
+		defaultProfile: readString(source.defaultProfile),
+		fillDelay: Math.max(0, readNumber(source.fillDelay, DEFAULT_SETTINGS.fillDelay)),
+		highlightFields: readBoolean(source.highlightFields, DEFAULT_SETTINGS.highlightFields),
+		showButtons: readBoolean(source.showButtons, DEFAULT_SETTINGS.showButtons),
+		buttonPosition: source.buttonPosition === 'outside-right' || source.buttonPosition === 'above'
+			? source.buttonPosition
+			: DEFAULT_SETTINGS.buttonPosition,
+		contextMenuEnabled: readBoolean(source.contextMenuEnabled, DEFAULT_SETTINGS.contextMenuEnabled),
+		autoHideButtons: readBoolean(source.autoHideButtons, DEFAULT_SETTINGS.autoHideButtons),
+		buttonStyle: source.buttonStyle === 'full' ? 'full' : DEFAULT_SETTINGS.buttonStyle,
+		debugMode,
+		featureFlags
+	}
 }
 
 function createEmptyProfileData(): ProfileData {
@@ -526,13 +579,13 @@ export class StorageService {
 	async saveSettings(settings: Partial<StorageData['settings']>): Promise<void> {
 		const current = await this.getSettings()
 		await chrome.storage.sync.set({
-			settings: { ...current, ...settings }
+			settings: normalizeSettings({ ...current, ...settings })
 		})
 	}
 
 	async getSettings(): Promise<StorageData['settings']> {
 		const result = await chrome.storage.sync.get('settings')
-		return result.settings || DEFAULT_SETTINGS
+		return normalizeSettings(result.settings)
 	}
 
 	async saveFieldMappings(mappings: Record<string, string>): Promise<void> {

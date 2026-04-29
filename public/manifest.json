@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "FormFilla",
   "version": "1.1.0",
-  "description": "Auto-fill forms with test data profiles for developers and testers",
+  "description": "Dev/test-only form filler for localhost, approved test domains, and local fixtures",
   "permissions": [
     "storage",
     "activeTab",
@@ -57,7 +57,7 @@
   ],
   "action": {
     "default_popup": "src/popup/index.html",
-    "default_title": "FormFilla"
+    "default_title": "FormFilla · Dev/Test Only"
   },
   "commands": {
     "fill-current-page": {

@@ -1,5 +1,5 @@
 import { ProfileManager } from '@/lib/profiles'
-import { StorageService } from '@/lib/storage'
+import { DEFAULT_FEATURE_FLAGS, StorageService } from '@/lib/storage'
 import {
 	type ContentCommandMessage,
 	type ContentResponseMessage,
@@ -15,8 +15,29 @@ import {
 } from '@/types'
 
 type PageReadiness = 'loading' | 'ready' | 'empty' | 'unavailable'
+type ReleaseGateTone = 'pass' | 'warning' | 'danger'
+type EnvironmentAssessmentKind = 'no-tab' | 'allowed-host' | 'local-fixture' | 'blocked-host' | 'unsupported-scheme'
+
+type ReleaseGateItem = {
+	label: string
+	detail: string
+	tone: ReleaseGateTone
+}
+
+type EnvironmentAssessment = {
+	kind: EnvironmentAssessmentKind
+	detail: string
+	tone: ReleaseGateTone
+	blocksAutofill: boolean
+}
+
+const RELEASE_ALLOWED_HOST_SUFFIXES = ['.local', '.test', '.dev', '.staging', '.uat'] as const
+const RELEASE_BOUNDARY_LABEL = 'localhost, 127.0.0.1, *.local, *.test, *.dev, *.staging, *.uat, and local file fixtures'
 
 type PopupElements = {
+	releaseGatePanel: HTMLElement
+	releaseGateSummary: HTMLElement
+	releaseGateList: HTMLElement
 	pageStatusPill: HTMLElement
 	pageStatusDetail: HTMLElement
 	formCount: HTMLElement
@@ -64,7 +85,9 @@ class PopupUI {
 	private profiles: Profile[] = []
 	private activeProfileId = ''
 	private activeTabId: number | null = null
+	private activeTabUrl = ''
 	private pageReadiness: PageReadiness = 'loading'
+	private featureFlags: Record<string, boolean> = { ...DEFAULT_FEATURE_FLAGS }
 	private debugModeEnabled = false
 	private lastDebugTitle = 'Debug Trace'
 	private lastDebugTraces: FieldDebugTrace[] = []
@@ -87,6 +110,9 @@ class PopupUI {
 
 	private getElements(): PopupElements {
 		return {
+			releaseGatePanel: document.getElementById('release-gate-panel')!,
+			releaseGateSummary: document.getElementById('release-gate-summary')!,
+			releaseGateList: document.getElementById('release-gate-list')!,
 			pageStatusPill: document.getElementById('page-status-pill')!,
 			pageStatusDetail: document.getElementById('page-status-detail')!,
 			formCount: document.getElementById('form-count')!,
@@ -114,7 +140,9 @@ class PopupUI {
 
 	private async loadSettings(): Promise<void> {
 		const settings = await this.storage.getSettings()
-		this.debugModeEnabled = Boolean(settings.debugMode)
+		this.featureFlags = { ...DEFAULT_FEATURE_FLAGS, ...settings.featureFlags }
+		this.debugModeEnabled = settings.debugMode && this.featureFlags.allowDebugTools
+		this.renderReleaseGatePanel()
 		this.renderDebugToggle()
 		this.renderDebugPanel()
 	}
@@ -138,7 +166,7 @@ class PopupUI {
 			profileSelect.disabled = true
 			activeProfileName.textContent = 'No active profile'
 			activeProfileMeta.textContent = 'Open the profile manager to create or import a profile before autofilling.'
-			this.elements.autofillButton.disabled = true
+			this.updateActionAvailability()
 			return
 		}
 
@@ -156,6 +184,7 @@ class PopupUI {
 		activeProfileMeta.textContent = activeProfile
 			? `${this.profiles.length} saved profiles available. Autofill uses this profile unless you switch it below.`
 			: 'Open the profile manager to create or import a profile before autofilling.'
+		this.updateActionAvailability()
 	}
 
 	private setupEventListeners(): void {
@@ -184,7 +213,176 @@ class PopupUI {
 	private async getActiveTabId(): Promise<number | null> {
 		const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
 		this.activeTabId = tab?.id ?? null
+		this.activeTabUrl = tab?.url ?? ''
 		return this.activeTabId
+	}
+
+	private isAllowedTestHost(hostname: string): boolean {
+		return hostname === 'localhost'
+			|| hostname === '127.0.0.1'
+			|| RELEASE_ALLOWED_HOST_SUFFIXES.some(suffix => hostname.endsWith(suffix))
+	}
+
+	private assessActiveEnvironment(): EnvironmentAssessment {
+		if (!this.activeTabId) {
+			return {
+				kind: 'no-tab',
+				detail: 'No active tab is available for release-gate checks.',
+				tone: 'danger',
+				blocksAutofill: true
+			}
+		}
+
+		if (!this.activeTabUrl) {
+			return {
+				kind: 'unsupported-scheme',
+				detail: `This page does not expose a supported URL. FormFilla only runs on ${RELEASE_BOUNDARY_LABEL}.`,
+				tone: 'danger',
+				blocksAutofill: true
+			}
+		}
+
+		let parsedUrl: URL
+		try {
+			parsedUrl = new URL(this.activeTabUrl)
+		} catch {
+			return {
+				kind: 'unsupported-scheme',
+				detail: `This page uses an unsupported URL format. FormFilla only runs on ${RELEASE_BOUNDARY_LABEL}.`,
+				tone: 'danger',
+				blocksAutofill: true
+			}
+		}
+
+		if (parsedUrl.protocol === 'file:') {
+			if (!this.featureFlags.allowFileFixtures) {
+				return {
+					kind: 'local-fixture',
+					detail: 'Local file fixtures are disabled by rollout settings. Re-enable file fixtures in Options before testing local HTML pages.',
+					tone: 'danger',
+					blocksAutofill: true
+				}
+			}
+
+			return {
+				kind: 'local-fixture',
+				detail: 'Local file fixture mode is enabled. Keep Chrome file URL access limited to disposable fixture pages.',
+				tone: 'warning',
+				blocksAutofill: false
+			}
+		}
+
+		if ((parsedUrl.protocol === 'http:' || parsedUrl.protocol === 'https:') && this.isAllowedTestHost(parsedUrl.hostname)) {
+			return {
+				kind: 'allowed-host',
+				detail: `Host ${parsedUrl.hostname} is inside the dev/test allowlist.`,
+				tone: 'pass',
+				blocksAutofill: false
+			}
+		}
+
+		if (parsedUrl.protocol === 'http:' || parsedUrl.protocol === 'https:') {
+			return {
+				kind: 'blocked-host',
+				detail: `Host ${parsedUrl.hostname} is outside the dev/test allowlist. FormFilla will not inject here.`,
+				tone: 'danger',
+				blocksAutofill: true
+			}
+		}
+
+		return {
+			kind: 'unsupported-scheme',
+			detail: `Scheme ${parsedUrl.protocol} is unsupported. FormFilla only runs on ${RELEASE_BOUNDARY_LABEL}.`,
+			tone: 'danger',
+			blocksAutofill: true
+		}
+	}
+
+	private buildReleaseGateState(): { summary: string; items: ReleaseGateItem[]; blocksAutofill: boolean } {
+		const environmentGate = this.assessActiveEnvironment()
+		const items: ReleaseGateItem[] = [
+			{
+				label: 'Environment boundary',
+				detail: environmentGate.detail,
+				tone: environmentGate.tone
+			},
+			{
+				label: 'Debug traces',
+				detail: !this.featureFlags.allowDebugTools
+					? 'Debug traces are locked off by rollout settings.'
+					: this.debugModeEnabled
+						? 'Debug mode is on. Traces stay redacted, but leave this off outside active diagnosis.'
+						: 'Debug mode is off by default.',
+				tone: !this.featureFlags.allowDebugTools || !this.debugModeEnabled ? 'pass' : 'warning'
+			},
+			{
+				label: 'Unsupported widgets',
+				detail: 'Low-confidence, mismatched, or unsupported controls stay skipped or move to review instead of being guessed.',
+				tone: 'pass'
+			}
+		]
+
+		const summary = items.some(item => item.tone === 'danger')
+			? 'Autofill stays blocked until the failing release gate is cleared.'
+			: items.some(item => item.tone === 'warning')
+				? 'Autofill is available with caution notes for this page.'
+				: 'All release gates are clear for the active page.'
+
+		return {
+			summary,
+			items,
+			blocksAutofill: environmentGate.blocksAutofill
+		}
+	}
+
+	private renderReleaseGatePanel(): void {
+		const gateState = this.buildReleaseGateState()
+
+		if (!this.featureFlags.showReleaseGateChecks) {
+			this.elements.releaseGatePanel.hidden = true
+			return
+		}
+
+		this.elements.releaseGatePanel.hidden = false
+		this.elements.releaseGateSummary.textContent = gateState.summary
+		this.elements.releaseGateList.innerHTML = ''
+
+		gateState.items.forEach(item => {
+			const gate = document.createElement('li')
+			gate.className = `gate-item ${item.tone}`
+
+			const heading = document.createElement('strong')
+			heading.textContent = item.label
+
+			const detail = document.createElement('span')
+			detail.textContent = item.detail
+
+			gate.append(heading, detail)
+			this.elements.releaseGateList.appendChild(gate)
+		})
+	}
+
+	private updateActionAvailability(): void {
+		const { blocksAutofill } = this.buildReleaseGateState()
+		const canRun = this.pageReadiness === 'ready' && Boolean(this.activeProfileId) && !blocksAutofill
+		this.elements.autofillButton.disabled = !canRun
+		this.elements.reviewButton.disabled = !canRun
+	}
+
+	private getUnavailablePageDetail(environmentGate: EnvironmentAssessment): string {
+		switch (environmentGate.kind) {
+			case 'no-tab':
+				return 'No active tab is available for autofill.'
+			case 'blocked-host':
+			case 'unsupported-scheme':
+				return `FormFilla only runs on ${RELEASE_BOUNDARY_LABEL}.`
+			case 'local-fixture':
+				return environmentGate.blocksAutofill
+					? environmentGate.detail
+					: 'Enable file URL access for FormFilla and reload the fixture page if local HTML fixtures are not detected.'
+			default:
+				return 'FormFilla cannot inspect this page yet. Reload the tab or make sure the content script can run here.'
+		}
 	}
 
 	private sendFillFormMessage(tabId: number, profileData: ProfileData): Promise<ContentResponseMessage | null> {
@@ -224,8 +422,16 @@ class PopupUI {
 
 	private async refreshPageStatus(): Promise<void> {
 		const tabId = await this.getActiveTabId()
+		const environmentGate = this.assessActiveEnvironment()
+		this.renderReleaseGatePanel()
+
 		if (!tabId) {
-			this.renderPageStatus('unavailable', 'No active tab is available for autofill.', 0, 0)
+			this.renderPageStatus('unavailable', this.getUnavailablePageDetail(environmentGate), 0, 0)
+			return
+		}
+
+		if (environmentGate.blocksAutofill) {
+			this.renderPageStatus('unavailable', this.getUnavailablePageDetail(environmentGate), 0, 0)
 			return
 		}
 
@@ -233,7 +439,7 @@ class PopupUI {
 		if (!response || isErrorResponse(response)) {
 			this.renderPageStatus(
 				'unavailable',
-				'FormFilla cannot inspect this page yet. Reload the tab or make sure the content script can run here.',
+				this.getUnavailablePageDetail(environmentGate),
 				0,
 				0
 			)
@@ -265,8 +471,8 @@ class PopupUI {
 		this.elements.pageStatusDetail.textContent = detail
 		this.elements.formCount.textContent = String(formCount)
 		this.elements.fieldCount.textContent = String(fieldCount)
-		this.elements.autofillButton.disabled = readiness !== 'ready' || !this.activeProfileId
-		this.elements.reviewButton.disabled = readiness !== 'ready' || !this.activeProfileId
+		this.renderReleaseGatePanel()
+		this.updateActionAvailability()
 	}
 
 	private async handleProfileSelectionChange(): Promise<void> {
@@ -301,8 +507,7 @@ class PopupUI {
 
 		const response = await this.sendFillFormMessage(tabId, activeProfile.data)
 		this.elements.autofillButton.textContent = 'Autofill Current Page'
-		this.elements.autofillButton.disabled = this.pageReadiness !== 'ready'
-		this.elements.reviewButton.disabled = this.pageReadiness !== 'ready'
+		this.updateActionAvailability()
 
 		if (!response || isErrorResponse(response)) {
 			this.renderRunSummary([])
@@ -337,8 +542,7 @@ class PopupUI {
 
 		const response = await this.sendReviewFieldsMessage(tabId, activeProfile.data)
 		this.elements.reviewButton.textContent = 'Review Unresolved'
-		this.elements.reviewButton.disabled = this.pageReadiness !== 'ready'
-		this.elements.autofillButton.disabled = this.pageReadiness !== 'ready'
+		this.updateActionAvailability()
 
 		if (!response || isErrorResponse(response)) {
 			this.showToast(response?.error || 'Field review could not reach the current page.', 'error')
@@ -353,9 +557,15 @@ class PopupUI {
 	}
 
 	private async toggleDebugMode(): Promise<void> {
+		if (!this.featureFlags.allowDebugTools) {
+			this.showToast('Debug tools are disabled by rollout settings.', 'error')
+			return
+		}
+
 		const nextState = !this.debugModeEnabled
 		await this.storage.saveSettings({ debugMode: nextState })
 		this.debugModeEnabled = nextState
+		this.renderReleaseGatePanel()
 		this.renderDebugToggle()
 		this.renderDebugPanel()
 		this.showToast(nextState ? 'Debug mode enabled' : 'Debug mode disabled')
@@ -418,6 +628,10 @@ class PopupUI {
 				.map(result => result.review)
 				.filter((item): item is FieldReviewItem => Boolean(item))
 		)
+
+		if (counts.skipped > 0 || counts.failed > 0) {
+			this.prependPolicyNotice('Skipped and failed widgets were left untouched. FormFilla does not guess on unsupported controls.')
+		}
 	}
 
 	private renderReviewItems(items: FieldReviewItem[]): void {
@@ -448,6 +662,17 @@ class PopupUI {
 		})
 
 		this.renderIssueItems(items)
+
+		if (counts.skipped > 0 || counts.failed > 0) {
+			this.prependPolicyNotice('Skipped and failed widgets stay visible here so unsupported controls are never filled by guesswork.')
+		}
+	}
+
+	private prependPolicyNotice(message: string): void {
+		const item = document.createElement('li')
+		item.className = 'issue-item neutral'
+		item.textContent = message
+		this.elements.summaryIssues.prepend(item)
 	}
 
 	private captureDebugTraces(title: string, traces: FieldDebugTrace[]): void {
@@ -457,12 +682,17 @@ class PopupUI {
 	}
 
 	private renderDebugToggle(): void {
-		this.elements.debugToggleButton.textContent = this.debugModeEnabled ? 'Debug Mode On' : 'Debug Mode Off'
+		this.elements.debugToggleButton.textContent = !this.featureFlags.allowDebugTools
+			? 'Debug Locked'
+			: this.debugModeEnabled
+				? 'Debug Mode On'
+				: 'Debug Mode Off'
+		this.elements.debugToggleButton.disabled = !this.featureFlags.allowDebugTools
 		this.elements.debugToggleButton.classList.toggle('is-active', this.debugModeEnabled)
 	}
 
 	private renderDebugPanel(): void {
-		if (!this.debugModeEnabled) {
+		if (!this.featureFlags.allowDebugTools || !this.debugModeEnabled) {
 			this.elements.debugPanel.hidden = true
 			return
 		}

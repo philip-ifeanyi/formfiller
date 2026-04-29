@@ -21,7 +21,7 @@ import {
 } from '@/types'
 import { FieldDetector } from './field-detector'
 import { resolveProfileValueForFieldKey } from './profiles'
-import { StorageService } from './storage'
+import { DEFAULT_FEATURE_FLAGS, StorageService } from './storage'
 import { createDebugValuePreview, sanitizeFieldValue, summarizeDebugText } from './security'
 
 function isFieldValueResponse(response: BackgroundResponseMessage | undefined): response is { value: string } {
@@ -185,7 +185,9 @@ export class InteractionManager {
 			buttonPosition: 'inside-right',
 			contextMenuEnabled: true,
 			autoHideButtons: true,
-			buttonStyle: 'minimal'
+			buttonStyle: 'minimal',
+			debugMode: false,
+			featureFlags: { ...DEFAULT_FEATURE_FLAGS }
 		}
 		this.loadPreferences()
 	}

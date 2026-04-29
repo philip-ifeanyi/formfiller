@@ -103,6 +103,46 @@
 			color: #6f4725;
 		}
 
+		.gate-list {
+			list-style: none;
+			padding: 0;
+			margin: 12px 0 0;
+			display: flex;
+			flex-direction: column;
+			gap: 8px;
+		}
+
+		.gate-item {
+			display: flex;
+			flex-direction: column;
+			gap: 3px;
+			padding: 10px 12px;
+			border-radius: 12px;
+			background: var(--paper);
+			border: 1px solid rgba(27, 42, 34, 0.08);
+		}
+
+		.gate-item strong {
+			font-size: 13px;
+		}
+
+		.gate-item span {
+			font-size: 12px;
+			color: var(--muted);
+		}
+
+		.gate-item.pass {
+			background: var(--accent-soft);
+		}
+
+		.gate-item.warning {
+			background: var(--warning-soft);
+		}
+
+		.gate-item.danger {
+			background: var(--danger-soft);
+		}
+
 		.status-row {
 			display: flex;
 			align-items: center;
@@ -442,9 +482,16 @@
 		</header>
 
 		<div class="warning-banner">
-			<strong>Test data only.</strong> Use FormFilla on development or test environments, never with real personal or
-			financial data.
+			<strong>Test data only.</strong> FormFilla is gated to localhost, approved test domains, and local fixtures. Never
+			use
+			it with real personal or financial data.
 		</div>
+
+		<section class="panel" id="release-gate-panel">
+			<h2>Release Gates</h2>
+			<p class="detail" id="release-gate-summary">Checking rollout safety for the active page.</p>
+			<ul class="gate-list" id="release-gate-list"></ul>
+		</section>
 
 		<section class="panel">
 			<h2>Page Readiness</h2>
