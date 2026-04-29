@@ -480,10 +480,16 @@ export class InteractionManager {
 
 	public reviewFormWithProfile(form: HTMLFormElement, profileData: ProfileData): FieldReviewItem[] {
 		const snapshot = this.fieldDetector.collectFormSnapshot(form)
+		const inferences = this.fieldDetector.inferFieldCandidates(snapshot.candidates, snapshot.sections)
 		const reviewItemsByFingerprint = new Map<string, FieldReviewItem>()
 
 		for (const candidate of snapshot.candidates) {
-			const plannedFill = this.planFieldFill(candidate, profileData, DEFAULT_FILL_RETRY_POLICY)
+			const plannedFill = this.planFieldFill(
+				candidate,
+				profileData,
+				DEFAULT_FILL_RETRY_POLICY,
+				inferences.get(candidate.id)
+			)
 			if (!plannedFill.result?.review) {
 				continue
 			}
@@ -537,13 +543,19 @@ export class InteractionManager {
 		retryQueue: Map<string, RetryQueueEntry>
 	): Promise<boolean> {
 		let cycleHadRetryableFailures = false
+		const inferences = this.fieldDetector.inferFieldCandidates(snapshot.candidates, snapshot.sections)
 
 		for (const candidate of snapshot.candidates) {
 			if (session.cancelled) {
 				break
 			}
 
-			const plannedFill = this.planFieldFill(candidate, session.profileData, FORM_FILL_RETRY_POLICY)
+			const plannedFill = this.planFieldFill(
+				candidate,
+				session.profileData,
+				FORM_FILL_RETRY_POLICY,
+				inferences.get(candidate.id)
+			)
 			const fingerprint = this.getPlannedFillFingerprint(plannedFill)
 
 			if (resultsByFingerprint.has(fingerprint)) {
@@ -752,9 +764,15 @@ export class InteractionManager {
 	): PlannedFieldFill | null {
 		const targetFingerprint = this.getPlannedFillFingerprint(target)
 		const snapshot = this.fieldDetector.collectFormSnapshot(form)
+		const inferences = this.fieldDetector.inferFieldCandidates(snapshot.candidates, snapshot.sections)
 
 		for (const candidate of snapshot.candidates) {
-			const plannedFill = this.planFieldFill(candidate, profileData, target.instruction.retryPolicy)
+			const plannedFill = this.planFieldFill(
+				candidate,
+				profileData,
+				target.instruction.retryPolicy,
+				inferences.get(candidate.id)
+			)
 			const fingerprint = this.getPlannedFillFingerprint(plannedFill)
 
 			if (fingerprint === targetFingerprint) {
@@ -860,9 +878,9 @@ export class InteractionManager {
 	private planFieldFill(
 		candidate: FieldCandidate,
 		profileData: ProfileData,
-		retryPolicy: FillRetryPolicy = DEFAULT_FILL_RETRY_POLICY
+		retryPolicy: FillRetryPolicy = DEFAULT_FILL_RETRY_POLICY,
+		inference: FieldInference = this.fieldDetector.inferFieldCandidate(candidate)
 	): PlannedFieldFill {
-		const inference = this.fieldDetector.inferFieldCandidate(candidate)
 		const resultFieldKey = this.getResultFieldKey(candidate, inference)
 
 		if (inference.status === 'review') {

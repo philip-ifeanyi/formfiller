@@ -359,6 +359,17 @@ export class FieldDetector {
 		return this.toFieldInfo(candidate, this.inferFieldCandidate(candidate))
 	}
 
+	inferFieldCandidates(candidates: FieldCandidate[], sections: FormSectionSnapshot[] = []): Map<string, FieldInference> {
+		const inferences = new Map<string, FieldInference>()
+
+		candidates.forEach(candidate => {
+			inferences.set(candidate.id, this.inferFieldCandidate(candidate))
+		})
+
+		this.applyDuplicateResolution(candidates, sections, inferences)
+		return inferences
+	}
+
 	inferFieldCandidate(candidate: FieldCandidate): FieldInference {
 		const structuralSkipReasons = this.getStructuralSkipReasons(candidate)
 		const evaluations = this.classifierTargets
@@ -441,9 +452,13 @@ export class FieldDetector {
 
 	detectFieldsFromSnapshot(snapshot: FormSnapshot): Map<HTMLElement, FieldInfo> {
 		const fieldMap = new Map<HTMLElement, FieldInfo>()
+		const inferences = this.inferFieldCandidates(snapshot.candidates, snapshot.sections)
 
 		snapshot.candidates.forEach(candidate => {
-			const detectedField = this.detectFieldCandidate(candidate)
+			const detectedField = this.toFieldInfo(
+				candidate,
+				inferences.get(candidate.id) || this.inferFieldCandidate(candidate)
+			)
 			if (detectedField) {
 				fieldMap.set(candidate.element, detectedField)
 			}
@@ -812,6 +827,101 @@ export class FieldDetector {
 		}
 
 		return reasons
+	}
+
+	private applyDuplicateResolution(
+		candidates: FieldCandidate[],
+		sections: FormSectionSnapshot[],
+		inferences: Map<string, FieldInference>
+	): void {
+		const sectionsById = new Map(sections.map(section => [section.id, section]))
+		const duplicateBuckets = new Map<string, Array<{ candidate: FieldCandidate; inference: FieldInference }>>()
+
+		candidates.forEach(candidate => {
+			const inference = inferences.get(candidate.id)
+			if (!inference || !this.isDuplicateResolutionCandidate(candidate, inference)) {
+				return
+			}
+
+			const bucketKey = `${candidate.sectionId || candidate.formId}::${inference.fieldKey}`
+			const bucket = duplicateBuckets.get(bucketKey) || []
+			bucket.push({ candidate, inference })
+			duplicateBuckets.set(bucketKey, bucket)
+		})
+
+		duplicateBuckets.forEach(entries => {
+			if (entries.length < 2) {
+				return
+			}
+
+			const sortedEntries = [...entries].sort((left, right) => right.inference.confidence - left.inference.confidence)
+			const leader = sortedEntries[0]
+			const runnerUp = sortedEntries[1]
+			const downgradeAll = Boolean(
+				runnerUp && leader.inference.confidence - runnerUp.inference.confidence < FIELD_INFERENCE_LIMITS.ambiguityDelta
+			)
+			const sectionId = leader.candidate.sectionId || leader.candidate.formId
+			const sectionLabel = sectionsById.get(sectionId)?.title?.trim()
+			const collisionLabels = sortedEntries
+				.map(entry => this.getDuplicateCollisionLabel(entry.candidate))
+				.filter((label): label is string => Boolean(label))
+				.slice(0, 3)
+
+			sortedEntries.forEach((entry, index) => {
+				if (!downgradeAll && index === 0) {
+					return
+				}
+
+				inferences.set(
+					entry.candidate.id,
+					this.createDuplicateResolutionInference(
+						entry.inference,
+						sectionLabel,
+						collisionLabels,
+						sortedEntries.length,
+						downgradeAll
+					)
+				)
+			})
+		})
+	}
+
+	private isDuplicateResolutionCandidate(candidate: FieldCandidate, inference: FieldInference): boolean {
+		if (!inference.fieldKey || inference.status === 'skip') {
+			return false
+		}
+
+		return !['checkbox', 'radio', 'radiogroup'].includes(candidate.controlKind)
+	}
+
+	private createDuplicateResolutionInference(
+		inference: FieldInference,
+		sectionLabel: string | undefined,
+		collisionLabels: string[],
+		duplicateCount: number,
+		downgradeAll: boolean
+	): FieldInference {
+		const sectionDescriptor = sectionLabel ? `section "${sectionLabel}"` : 'this section'
+		const collisionSummary = collisionLabels.length > 0
+			? ` (${collisionLabels.join(', ')})`
+			: ''
+		const duplicateReason = downgradeAll
+			? `downgraded because ${duplicateCount} peer fields in ${sectionDescriptor} matched ${inference.fieldKey} with similar confidence${collisionSummary}`
+			: `downgraded because another peer field in ${sectionDescriptor} matched ${inference.fieldKey} more strongly${collisionSummary}`
+
+		return {
+			...inference,
+			status: 'review',
+			reasons: this.uniqueReasons([
+				...inference.reasons,
+				duplicateReason
+			])
+		}
+	}
+
+	private getDuplicateCollisionLabel(candidate: FieldCandidate): string | null {
+		const label = candidate.labelText?.trim() || candidate.attributes.name || candidate.attributes.id || candidate.placeholder
+		return label ? label.trim() : null
 	}
 
 	private uniqueReasons(reasons: string[]): string[] {

@@ -1,0 +1,243 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+	<meta charset="UTF-8" />
+	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+	<title>FormFilla FF-16 Multi-Step Fixture</title>
+	<style>
+		:root {
+			color-scheme: light;
+			font-family: 'Trebuchet MS', 'Segoe UI', sans-serif;
+			background: #f3efe5;
+			color: #1e2a24;
+		}
+
+		body {
+			margin: 0;
+			padding: 32px 20px 48px;
+			background:
+				radial-gradient(circle at top left, rgba(212, 162, 96, 0.2), transparent 28%),
+				linear-gradient(180deg, #f8f4ec 0%, #efe6d9 100%);
+		}
+
+		main {
+			max-width: 860px;
+			margin: 0 auto;
+			display: grid;
+			gap: 20px;
+		}
+
+		.panel,
+		form {
+			background: rgba(255, 252, 246, 0.92);
+			border: 1px solid rgba(71, 59, 43, 0.14);
+			border-radius: 20px;
+			box-shadow: 0 16px 36px rgba(67, 54, 40, 0.1);
+		}
+
+		.panel {
+			padding: 18px 20px;
+		}
+
+		form {
+			padding: 24px;
+			display: grid;
+			gap: 18px;
+		}
+
+		h1,
+		h2,
+		legend {
+			margin: 0;
+			font-family: Georgia, 'Times New Roman', serif;
+			letter-spacing: 0.02em;
+		}
+
+		p {
+			margin: 0;
+			line-height: 1.5;
+		}
+
+		fieldset {
+			margin: 0;
+			padding: 16px;
+			border: 1px solid rgba(71, 59, 43, 0.14);
+			border-radius: 14px;
+			display: grid;
+			gap: 14px;
+		}
+
+		.section-grid {
+			display: grid;
+			gap: 14px;
+			grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+		}
+
+		label {
+			display: grid;
+			gap: 8px;
+			font-size: 14px;
+			font-weight: 600;
+		}
+
+		input {
+			padding: 12px 14px;
+			border-radius: 12px;
+			border: 1px solid rgba(63, 54, 47, 0.22);
+			background: rgba(255, 255, 255, 0.92);
+			font: inherit;
+		}
+
+		input:focus {
+			outline: 2px solid rgba(22, 93, 74, 0.32);
+			outline-offset: 2px;
+		}
+
+		.badge {
+			display: inline-flex;
+			align-items: center;
+			padding: 4px 10px;
+			border-radius: 999px;
+			background: rgba(22, 93, 74, 0.12);
+			color: #165d4a;
+			font-size: 12px;
+			font-weight: 700;
+		}
+
+		#fixture-state {
+			font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+			font-size: 12px;
+			white-space: pre-wrap;
+			background: rgba(31, 32, 29, 0.92);
+			color: #f8f4ec;
+			padding: 14px;
+			border-radius: 14px;
+		}
+
+		[hidden] {
+			display: none !important;
+		}
+	</style>
+</head>
+
+<body>
+	<main>
+		<section class="panel">
+			<span class="badge">FF-16</span>
+			<h1>Multi-Step Continuation Fixture</h1>
+			<p>Step 1 removes itself once the required fields are populated. Step 2 is a new form node that should be
+				rescanned and filled in the same page session. It also includes a weaker duplicate email field that should fall
+				back to review instead of silently colliding.</p>
+		</section>
+
+		<form id="step-one-form" aria-label="Account Setup Step 1">
+			<h2>Step 1: Identity</h2>
+			<div class="section-grid">
+				<label>
+					First Name
+					<input id="step1-first-name" name="firstName" autocomplete="given-name" required />
+				</label>
+				<label>
+					Last Name
+					<input id="step1-last-name" name="lastName" autocomplete="family-name" required />
+				</label>
+				<label>
+					Primary Email
+					<input id="step1-email" type="email" name="email" autocomplete="email" required />
+				</label>
+			</div>
+		</form>
+
+		<form id="step-two-form" aria-label="Account Setup Step 2" hidden>
+			<h2>Step 2: Delivery And Contact</h2>
+			<fieldset>
+				<legend>Shipping Details</legend>
+				<div class="section-grid">
+					<label>
+						Address Line 1
+						<input id="step2-address-line1" name="addressLine1" autocomplete="address-line1" />
+					</label>
+					<label>
+						City
+						<input id="step2-city" name="city" autocomplete="address-level2" />
+					</label>
+				</div>
+			</fieldset>
+
+			<fieldset data-form-section>
+				<legend>Contact Preferences</legend>
+				<div class="section-grid">
+					<label>
+						Email Address
+						<input id="step2-primary-email" type="email" name="emailAddress" autocomplete="email" />
+					</label>
+					<label>
+						Best Email For Updates
+						<input id="step2-duplicate-email" type="text" name="emailContact" />
+					</label>
+				</div>
+			</fieldset>
+		</form>
+
+		<section class="panel">
+			<h2>Fixture State</h2>
+			<div id="fixture-state"></div>
+		</section>
+	</main>
+
+	<script>
+		const stepOneForm = document.getElementById('step-one-form');
+		const stepTwoForm = document.getElementById('step-two-form');
+		const stateNode = document.getElementById('fixture-state');
+		let hasAdvanced = false;
+
+		function getValue(id) {
+			return document.getElementById(id)?.value || '';
+		}
+
+		function updateState() {
+			stateNode.textContent = JSON.stringify({
+				stepOnePresent: document.contains(stepOneForm),
+				stepTwoVisible: !stepTwoForm.hidden,
+				values: {
+					firstName: getValue('step1-first-name'),
+					lastName: getValue('step1-last-name'),
+					emailStep1: getValue('step1-email'),
+					addressLine1: getValue('step2-address-line1'),
+					city: getValue('step2-city'),
+					primaryEmail: getValue('step2-primary-email'),
+					duplicateEmail: getValue('step2-duplicate-email')
+				}
+			}, null, 2);
+		}
+
+		function maybeAdvanceWizard() {
+			if (hasAdvanced) {
+				return;
+			}
+
+			const requiredIds = ['step1-first-name', 'step1-last-name', 'step1-email'];
+			const ready = requiredIds.every(id => getValue(id).trim().length > 0);
+			if (!ready) {
+				return;
+			}
+
+			hasAdvanced = true;
+			window.setTimeout(() => {
+				stepOneForm.remove();
+				stepTwoForm.hidden = false;
+				updateState();
+			}, 140);
+		}
+
+		document.addEventListener('input', () => {
+			updateState();
+			maybeAdvanceWizard();
+		});
+
+		updateState();
+	</script>
+</body>
+
+</html>

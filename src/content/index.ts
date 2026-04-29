@@ -12,6 +12,7 @@ import {
 	type FieldInfo,
 	type FillResult,
 	type FormControlElement,
+	 type FormSnapshot,
 	type ProfileData
 } from '../types'
 import { validateMessage } from '../lib/security'
@@ -27,6 +28,11 @@ const SUPPORTED_FIELD_SELECTOR = [
 	'[role="spinbutton"]',
 	'button[aria-haspopup="listbox"][aria-controls]'
 ].join(', ')
+
+const PAGE_FILL_CONTINUATION_POLICY = {
+	maxPasses: 4,
+	waitMs: 900
+} as const
 
 function isProfileDataResponse(response: BackgroundResponseMessage | null): response is { profileData: ProfileData } {
 	return Boolean(response && 'profileData' in response)
@@ -53,6 +59,8 @@ export class FormFillaContent {
 	private floatingActionButtonLabel: HTMLSpanElement | null = null
 	private isPageFillInProgress = false
 	private debugModeEnabled = false
+	private pageMutationVersion = 0
+	private pageMutationWaiters = new Set<() => void>()
 
 	constructor() {
 		this.fieldDetector = new FieldDetector()
@@ -152,12 +160,61 @@ export class FormFillaContent {
 	}
 
 	private async handleFormFillRequest(profileData: ProfileData): Promise<FillResult[]> {
-		const forms = this.getDetectedForms()
-		const results = await Promise.all(forms.map(form => {
-			return this.interactionManager.fillFormWithProfile(form, profileData)
-		}))
+		const processedSnapshots = new Set<string>()
+		const resultsByCandidateId = new Map<string, FillResult>()
 
-		return results.flat()
+		for (let pass = 1; pass <= PAGE_FILL_CONTINUATION_POLICY.maxPasses; pass += 1) {
+			const baselineMutationVersion = this.pageMutationVersion
+			const pendingSnapshots = this.getDetectedFormSnapshots()
+				.filter(snapshot => snapshot.candidates.length > 0)
+				.filter(snapshot => !processedSnapshots.has(this.getSnapshotContinuationKey(snapshot)))
+
+			if (pendingSnapshots.length === 0) {
+				if (pass === 1) {
+					break
+				}
+
+				const observedMutation = await this.waitForPageMutation(
+					baselineMutationVersion,
+					PAGE_FILL_CONTINUATION_POLICY.waitMs
+				)
+				if (!observedMutation) {
+					break
+				}
+
+				continue
+			}
+
+			for (const snapshot of pendingSnapshots) {
+				processedSnapshots.add(this.getSnapshotContinuationKey(snapshot))
+				const results = await this.interactionManager.fillFormWithProfile(snapshot.form, profileData)
+				results.forEach(result => {
+					resultsByCandidateId.set(result.candidateId, result)
+				})
+			}
+
+			const hasImmediateNextStep = this.getDetectedFormSnapshots()
+				.filter(snapshot => snapshot.candidates.length > 0)
+				.some(snapshot => !processedSnapshots.has(this.getSnapshotContinuationKey(snapshot)))
+
+			if (hasImmediateNextStep) {
+				continue
+			}
+
+			if (pass >= PAGE_FILL_CONTINUATION_POLICY.maxPasses) {
+				break
+			}
+
+			const observedMutation = await this.waitForPageMutation(
+				baselineMutationVersion,
+				PAGE_FILL_CONTINUATION_POLICY.waitMs
+			)
+			if (!observedMutation) {
+				break
+			}
+		}
+
+		return Array.from(resultsByCandidateId.values())
 	}
 
 	private async fillAllFormsOnPage(): Promise<FillResult[]> {
@@ -233,6 +290,10 @@ export class FormFillaContent {
 			affectedForms.forEach(form => {
 				this.interactionManager.notifyFormMutation(form)
 			})
+
+			if (shouldScan || affectedForms.size > 0) {
+				this.notifyPageMutation()
+			}
 
 			if (shouldScan) {
 				this.scanForms()
@@ -696,6 +757,19 @@ export class FormFillaContent {
 		return this.fieldDetector.collectFormSnapshots(document)
 	}
 
+	private getSnapshotContinuationKey(snapshot: FormSnapshot): string {
+		const candidateDescriptors = snapshot.candidates.map(candidate => {
+			return [
+				candidate.domSignature,
+				candidate.labelText || '',
+				candidate.attributes.name || '',
+				candidate.placeholder || ''
+			].join('::')
+		})
+
+		return [snapshot.domSignature, ...candidateDescriptors].join('||')
+	}
+
 	private getDetectedForms(): HTMLFormElement[] {
 		const formsBySignature = new Map<string, HTMLFormElement>()
 		this.getDetectedFormSnapshots().forEach(snapshot => {
@@ -712,6 +786,42 @@ export class FormFillaContent {
 		})
 
 		return Array.from(formsBySignature.values())
+	}
+
+	private notifyPageMutation(): void {
+		this.pageMutationVersion += 1
+		const waiters = Array.from(this.pageMutationWaiters)
+		this.pageMutationWaiters.clear()
+		waiters.forEach(waiter => waiter())
+	}
+
+	private waitForPageMutation(baselineMutationVersion: number, timeoutMs: number): Promise<boolean> {
+		if (this.pageMutationVersion > baselineMutationVersion) {
+			return Promise.resolve(true)
+		}
+
+		return new Promise(resolve => {
+			let settled = false
+			const finalize = () => {
+				if (settled) {
+					return
+				}
+
+				settled = true
+				clearTimeout(timeoutId)
+				this.pageMutationWaiters.delete(onWake)
+				resolve(this.pageMutationVersion > baselineMutationVersion)
+			}
+
+			const onWake = () => {
+				finalize()
+			}
+
+			this.pageMutationWaiters.add(onWake)
+			const timeoutId = window.setTimeout(() => {
+				finalize()
+			}, timeoutMs)
+		})
 	}
 
 	private showUserMessage(message: string): void {
@@ -750,6 +860,10 @@ export class FormFillaContent {
 		if (this.mutationObserver) {
 			this.mutationObserver.disconnect()
 		}
+
+		const waiters = Array.from(this.pageMutationWaiters)
+		this.pageMutationWaiters.clear()
+		waiters.forEach(waiter => waiter())
 
 		this.interactionManager.destroy()
 		this.removeFloatingActionButton()
